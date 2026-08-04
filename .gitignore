@@ -1,0 +1,13 @@
+# Python/Jupyter Notebook
+__pycache__/
+.ipynb_checkpoints/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# output throughput curves and figures
+outputs/
+
+# all Rayner standard data files
+Rayner_standard_data/
