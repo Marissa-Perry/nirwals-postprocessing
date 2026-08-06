@@ -184,13 +184,8 @@ def plot_throughput_validation(result, obj_dict, savepath=plot_flux_cal_dir, sho
     ratio = std_cal / rflux_cut
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 5), sharex=True, gridspec_kw={'height_ratios': [3, 1], 'hspace': 0})
-    ax1.step(r['wave'], std_cal, where='mid', lw=1.2, label='throughput-corrected NIRWALS')
-    ax1.step(r['wave'], rflux_cut, where='mid', color='black', alpha=0.8, lw=1.2, label='standard (Rayner+2009)')
-    
-    # for j, (lo, hi) in enumerate(r['tell_windows']):
-    #     ax1.axvspan(lo, hi, color='grey', alpha=0.25,
-    #                 label='downweighted (telluric)' if j == 0 else None)
-    #     ax2.axvspan(lo, hi, color='grey', alpha=0.25)
+    ax1.step(r['wave'], std_cal, where='mid', lw=1.4, label='throughput-corrected NIRWALS')
+    ax1.step(r['wave'], rflux_cut, where='mid', color='black', alpha=0.8,  lw=1.4, linestyle='dashed', label='standard (Rayner+2009)')
 
     ax1.set_ylabel('Flux [J/pixel]', fontsize=13)
     ax1.set_ylim(np.nanpercentile(std_cal, 0.5), np.nanpercentile(std_cal, 99.9))
