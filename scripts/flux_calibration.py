@@ -289,6 +289,9 @@ def write_fluxcal_fits(template_file, wave, flux, sigma, out_file, throughput_fi
             hdul.append(hdu)
 
     with fits.open(template_file) as hdul:
+        names = [h.name for h in hdul]
+
+        # --- SCI: flux-calibrated, telluric-corrected flux ---
         sci = hdul['SCI']
         sci.data = flux.astype(np.float32)
         sci.header.add_history('Telluric corrected and flux calibrated')
@@ -301,13 +304,48 @@ def write_fluxcal_fits(template_file, wave, flux, sigma, out_file, throughput_fi
                 err_hdu.header[k] = sci.header[k]
         update_hdu(hdul, err_hdu)
 
-        # --- WAVE: explicit wavelength array (float64), exact round-trip ---
+        # --- WAVE ---
         wave_hdu = fits.ImageHDU(data=np.asarray(wave, dtype=np.float64), name='WAVE')
         if 'CUNIT1' in sci.header:
             wave_hdu.header['BUNIT'] = (sci.header['CUNIT1'], 'wavelength unit')
         update_hdu(hdul, wave_hdu)
 
+        # --- SPECRES: evaluate resolution on this wavelength grid ---
+        if 'SPECRES' in [h.name for h in hdul]:
+            R = resolution_from_header(hdul['SPECRES'].header, wave).astype(np.float32)
+            res_hdu = fits.ImageHDU(data=R, name='SPECRES')
+            res_hdu.header['BUNIT'] = ('', 'Dimensionless R = lambda / FWHM')
+            res_hdu.header['SPRESQTY'] = ('R', 'Resolving power lambda/dlambda, per pixel')
+            for k in ('SPRESDEG', 'SPRESWLO', 'SPRESWHI', 'SPRESNFB'):
+                if k in hdul['SPECRES'].header:
+                    res_hdu.header[k] = hdul['SPECRES'].header[k]
+            # median poly coeffs in the header summary
+            for k in hdul['SPECRES'].header:
+                if k.startswith('SPRESC'):
+                    res_hdu.header[k] = hdul['SPECRES'].header[k]
+            update_hdu(hdul, res_hdu)
+
+        # --- SPECRES_COEFF_PER_FIBER: per-fibre coeff stack ---
+        if 'SPECRES_COEFF_PER_FIBER' in names:
+            update_hdu(hdul, hdul['SPECRES_COEFF_PER_FIBER'].copy())
+
         hdul.writeto(out_file, overwrite=True)
+
+
+def resolution_from_header(specres_header, wave):
+    deg = specres_header['SPRESDEG']
+    coeff = [specres_header[f'SPRESC{p}'] for p in range(deg, -1, -1)]  # highest-order first
+    wave = np.asarray(wave, dtype=float)
+    fwhm = np.polyval(coeff, wave)
+    R = wave / fwhm
+    # lo, hi = specres_header['SPRESWLO'], specres_header['SPRESWHI']
+    # wavelengths outside of the arc exposure's wavelength coverage
+    # bad = (wave < lo) | (wave > hi) | (fwhm <= 0)
+    # good = ~bad
+    # # interpolate over those regions
+    # if good.any() and bad.any():
+    #     R[bad] = np.interp(wave[bad], wave[good], R[good])
+    return R
 
 
 def plot_throughput(throughput_wave, throughput_values, tell_windows=None, wave_range=None, title='', show=True):

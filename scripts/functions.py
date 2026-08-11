@@ -123,6 +123,9 @@ def exposure_dict(filepath, product_type='science'):
 
         # primary products may not carry a named SCI extension
         sci = hdul['SCI'] if 'SCI' in ext_names else hdul[0]
+        wave = hdul['WAVE'] if 'WAVE' in ext_names else None
+        specres = hdul['SPECRES'] if 'SPECRES' in ext_names else None
+        specresc = hdul['SPECRES_COEFF_PER_FIBER'] if 'SPECRES_COEFF_PER_FIBER' in ext_names else None
 
         # airmass value from metadata is invalid, computing using telescope altitude
         tel_alt = float(h0['TELALT'])
@@ -142,23 +145,26 @@ def exposure_dict(filepath, product_type='science'):
             'pupil_end': hdr('PUPEND'),
             'ngroups': hdr('NGROUPS'),
             'cfw': str(h0.get('CFWCURZ', ''))[-12:],
+
             'flux': sci.data,
-            'sci_header': sci.header,
+            'spec_res': np.asarray(specres.data, dtype=float) if specres is not None else None,
+            'specres_coeffs': np.asarray(specresc.data, dtype=float) if specresc is not None else None,
+            
             'primary_header': h0,
+            'sci_header': sci.header,
+            'specres_header': specres.header if specres is not None else None,
         }
 
-        # optional extensions
-        for ext in ('ERR', 'GPCNT', 'BPM'):
-            if ext in ext_names:
-                d[ext.lower()] = hdul[ext].data
-                d[ext.lower() + '_header'] = hdul[ext].header
-
+        # set data depending on product type
         if product_type == 'primary':
             # raw detector frame: (rows, cols), no dispersion solution
             d['wave'] = None
             d['shape'] = None if d['flux'] is None else d['flux'].shape
         else:
-            d['wave'] = pixel_to_wavelength(sci.header, sci.data)
+            if wave is not None:
+                d['wave'] = np.asarray(wave.data, dtype=float)      # explicit product grid
+            else:
+                d['wave'] = pixel_to_wavelength(sci.header, sci.data)  # legacy fallback
 
         # coordinates
         ra_str = h0.get('RA', '')
@@ -183,9 +189,7 @@ def exposure_dict(filepath, product_type='science'):
 
 def get_reduced_exposures(obs_date, suffixes=('ssc', 'cf', 'a'), root=pipeline_root):
     '''
-    Return a dict of dicts, one per exposure, for a given obs date.
-    Each exposure holds shared metadata plus a sub-dict per data product:
-    'primary' (raw detector frame) and one per science suffix.
+    Return a dictionary of dictionaries, one per exposure, for a given obs date.
     '''
     exposures = {}
     primary_loaded = False
@@ -229,6 +233,7 @@ def get_reduced_exposures(obs_date, suffixes=('ssc', 'cf', 'a'), root=pipeline_r
     # sky exposures: 'object' names the corresponding target and needs updating
     for exp_id, exp in exposures.items():
         intermediate_data_products = [ext for ext in ('ssc', 'cf', 'a') if ext in exp]
+        # rename sky frame exposures from OBJECT to SKY
         if ('ssc' not in intermediate_data_products) and (exp['object'] != 'ARC'):
             exp['object'] = 'SKY'
 
@@ -420,3 +425,23 @@ def plot_science_reduction_results(obs_date, outdir=plot_ext_spectra_dir, smooth
                 plt.show()
             else:
                 plt.close()
+
+
+def compute_resolution_percentiles(coeffs, hdr, wave):
+    coeffs = np.atleast_2d(np.asarray(coeffs, float))  # (n_fibres, deg+1)
+    wave = np.asarray(wave, float)
+    # lo, hi = hdr['SPRESWLO'], hdr['SPRESWHI']
+
+    fwhm = np.vstack([np.polyval(c, wave) for c in coeffs])
+    R = wave[None, :] / fwhm
+    # R[:, (wave < lo) | (wave > hi)] = np.nan
+    R[fwhm <= 0] = np.nan
+
+    R_med = np.nanmedian(R, axis=0)
+    R_16 = np.nanpercentile(R, 16, axis=0)
+    R_84 = np.nanpercentile(R, 84, axis=0)
+    for row in (R_med, R_16, R_84):
+        g = np.isfinite(row)
+        if g.any() and not g.all():
+            row[~g] = np.interp(wave[~g], wave[g], row[g])
+    return R_med, R_16, R_84
