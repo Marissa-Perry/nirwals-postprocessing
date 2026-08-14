@@ -10,10 +10,10 @@ Additional reduction steps for NIRWALS data from SALT:
 ## Structure
 
 - `YYYYMMDD/` - data directories (not tracked in git) containing data products from the NIRWALS DRP to be postprocessed
-- `data/` - on the NIRWALS IFU, dither pattern, and standard spectrum for flux calibration
+- `data/` - NIRWALS IFU layout, dither-pattern setup, and standard spectrum for flux calibration
 - `functions/` - helper functions organized by each postprocessing step 
 - `outputs/` - diagnostic plots, throughput curves, and data products
-- `wrappers/postprocessing.py` - the script to run the postprocessing
+- `wrappers/postprocessing.py` - script for running the postprocessing
 
 ## Setup
 
@@ -23,7 +23,7 @@ Additional reduction steps for NIRWALS data from SALT:
 ```bash
 python -m post_reduction_processing.wrappers.postprocessing YYYYMMDD
 ```
-where YYYYMMDD is the date of the observation to postprocess. Two optional arguments can be added:
+where YYYYMMDD is the date of the science target observation to postprocess. Two optional arguments can be added:
 - `--telluric-standard-date YYYYMMDD`: a reduced telluric-standard observation used to derive the telluric correction with a PypeIt star-model fit. If omitted, the telluric correction is instead fit directly to the science target's own spectrum with PypeIt's poly-model fit.
 - `--specphot-date YYYYMMDD`: a reduced spectrophotometric-standard observation, used for flux calibration. If omitted, flux calibration is skipped.
 
