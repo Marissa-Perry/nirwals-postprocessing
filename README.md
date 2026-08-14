@@ -27,4 +27,4 @@ where YYYYMMDD is the date of the science target observation to postprocess. Two
 - `--telluric-standard-date YYYYMMDD`: a reduced telluric-standard observation used to derive the telluric correction with a PypeIt star-model fit. If omitted, the telluric correction is instead fit directly to the science target's own spectrum with PypeIt's poly-model fit.
 - `--specphot-date YYYYMMDD`: a reduced spectrophotometric-standard observation used for flux calibration. If omitted, flux calibration is skipped.
 
-Multiple science exposures found for YYYYMMDD are treated as dithers. The dither offset pattern used for combination is read from `data/IFU/User_offset.csv`. This file must be edited directly to setup a different dither pattern.
+Multiple science target exposures found for YYYYMMDD are treated as dithers. The dither offset pattern used for combination is read from `data/IFU/User_offset.csv`. This file must be edited directly to setup a different dither pattern.
