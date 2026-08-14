@@ -1,6 +1,6 @@
 # NIRWALS postprocessing
 
-Additional reduction steps for NIRWALS data from SALT:
+Postprocessing steps for reduced NIRWALS observations from SALT:
 - atmospheric absorption (telluric) correction
 - flux calibration
 - combining dithered observations (if any) into a data cube 
