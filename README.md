@@ -33,4 +33,4 @@ Description of optional arguments:
 - `--specphot-polyorder`: Continuum polynomial order for the spec-phot standard\'s self telluric correction with poly-model.
 - `--target-polyorder`: Continuum polynomial order for the poly-model telluric fit, used when no telluric standard is given.
 
-Unless `--no-dithers` is passed, multiple science target exposures found for YYYYMMDD are treated as dithers. The dither offset pattern used for combination is read from `data/IFU/User_offset.csv`. This file must be edited directly to setup a different dither pattern.
+Unless `--no-dithers` is passed, multiple science target exposures found for YYYYMMDD are treated as dithers. The dither offset pattern used for combination is read from `data/IFU/dither_pattern.csv`. This file must be edited directly to setup a different dither pattern.
