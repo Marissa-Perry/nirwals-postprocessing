@@ -10,7 +10,7 @@ Additional reduction steps for NIRWALS data from SALT:
 ## Structure
 
 - `YYYYMMDD/` - data directories (not tracked in git) containing data products from the NIRWALS DRP to be postprocessed
-- `data/` - information on the NIRWALS IFU, dither-pattern, and spectrophotometric-standard data for flux calibration
+- `data/` - on the NIRWALS IFU, dither pattern, and standard spectrum for flux calibration
 - `functions/` - helper functions organized by each postprocessing step 
 - `outputs/` - diagnostic plots, throughput curves, and data products
 - `wrappers/postprocessing.py` - the script to run the postprocessing
