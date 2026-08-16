@@ -3,16 +3,23 @@
 Postprocessing steps for reduced NIRWALS observations from SALT:
 - atmospheric absorption (telluric) correction
 - flux calibration
-- combining dithered observations (if any) into a data cube 
-    - Reconstruction uses a Gaussian kernel/modified Shepard's-method following the approach of [Law+2016](https://ui.adsabs.harvard.edu/abs/2016AJ....152...83L/abstract) and was originally developed by Antoine Mahoro.
-- extracting a 1D spectrum for the science target
+- 2D fiber data product
+    - fiber spectra (flux + inverse variance) with a table of each fiber's on-sky X/Y position.
+    - dithered observations (if any) are stacked as additional rows.
+        - An `EXPOSURE` column labels which exposure each 2D fiber spectra came from.
+- 3D data cube product
+    - constructed using a Gaussian kernel/modified Shepard's-method following the approach of [Law+2016](https://ui.adsabs.harvard.edu/abs/2016AJ....152...83L/abstract) and was originally developed by Antoine Mahoro.
+    - dithered observations (if any) are combined in this data product
+    - Note: there is correlation among neighboring spaxels, so the spaxel errors should be treated as lower bounds.
+- 1D spectra product
+    - selects fibers within an approximated half-light radius for each dithered exposure (if any) and averages across them.
 
 ## Structure
 
 - `YYYYMMDD/` - data directories (not tracked in git) containing data products from the NIRWALS DRP to be postprocessed
 - `data/` - NIRWALS IFU layout, dither-pattern setup, and standard spectrum for flux calibration
 - `functions/` - helper functions organized by each postprocessing step 
-- `outputs/` - diagnostic plots, throughput curves, and data products
+- `outputs/` - diagnostic plots, throughput curves, and final data products
 - `wrappers/postprocessing.py` - script for running the postprocessing
 
 ## Setup
