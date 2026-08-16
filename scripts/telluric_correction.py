@@ -123,7 +123,7 @@ def to_schmidt_kaler_type(sp_type, valid=SCHMIDT_KALER_TYPES):
 
 def fit_telluric_star_model(star_flux, star_wave, star_ivar, star_gpm, star_props, airmass, exptime,
                             telgridfile=TELLPCA_FILE, resln_guess=4000., polyorder=5, sn_clip=30.0, maxiter=3,
-                            pix_shift_bounds=(-10.0, 10.0), pix_stretch_bounds=(0.95, 1.05), hydrogen_mask_wid=20., disp=True):
+                            pix_shift_bounds=(-10.0, 10.0), pix_stretch_bounds=(0.95, 1.05), hydrogen_mask_wid=20., disp=False):
     '''
     Fit PypeIt's star object model + telluric transmission to a standard star.
     Mirrors pypeit.core.telluric.star_telluric, but on arrays (no spec1dfile).
@@ -198,7 +198,7 @@ def fit_telluric_star_model(star_flux, star_wave, star_ivar, star_gpm, star_prop
 def fit_telluric_poly_model(star_flux, star_wave, star_ivar, star_gpm, airmass, exptime,
                             telgridfile=TELLPCA_FILE, resln_guess=4000., polyorder=3, sn_clip=30.0, maxiter=3,
                             pix_shift_bounds=(-10.0, 10.0), pix_stretch_bounds=(0.95, 1.05), func='legendre', 
-                            model='exp', z_obj=0.0, mask_lyman_a=False, mask_hydrogen=True, hydrogen_mask_wid=20., disp=True):
+                            model='exp', z_obj=0.0, mask_lyman_a=False, mask_hydrogen=True, hydrogen_mask_wid=20., disp=False):
     '''
     Fit PypeIt's polynomial object model + telluric transmission to a spectrum
 
@@ -300,7 +300,7 @@ def windows_from_transmission(transmission, wave, threshold=0.95, min_width=5):
     return [(float(s), float(e)) for s, e in zip(starts, ends) if (e - s) >= min_width]
 
 
-def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, ylim=None, show=True):
+def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=None, show=True):
     '''
     Star model fit diagnostic.
       top:    obs, full model (star x telluric), intrinsic star model
@@ -353,7 +353,7 @@ def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=p
 
     plt.tight_layout()
     if savepath:
-        save_dir = os.path.join(savepath, obj_dict['exposure_id'])
+        save_dir = os.path.join(savepath, obs_date, obj_dict['exposure_id']) if obs_date else os.path.join(savepath, obj_dict['exposure_id'])
         os.makedirs(save_dir, exist_ok=True)
 
         filename = os.path.join(save_dir, 'telluric_model.png')
@@ -361,7 +361,7 @@ def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=p
     plt.show() if show else plt.close()
 
 
-def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, ylim=None, show=True):
+def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=None, show=True):
     '''
     Polynomial model fit diagnostic.
       top:    obs, full model (poly x telluric), polynomial continuum model
@@ -416,7 +416,7 @@ def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=p
 
     plt.tight_layout()
     if savepath:
-        save_dir = os.path.join(savepath, obj_dict['exposure_id'])
+        save_dir = os.path.join(savepath, obs_date, obj_dict['exposure_id']) if obs_date else os.path.join(savepath, obj_dict['exposure_id'])
         os.makedirs(save_dir, exist_ok=True)
 
         filename = os.path.join(save_dir, 'telluric_model_poly.png')
@@ -424,9 +424,9 @@ def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=p
     plt.show() if show else plt.close()
     
 
-def plot_telluric_correction(wave, raw_flux, corr_flux, obj_dict, savepath=plot_tell_corr_dir, smooth=10, show=True):
+def plot_telluric_correction(wave, raw_flux, corr_flux, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, smooth=10, show=True):
     '''
-    Corrected vs uncorrected coadd, with the corr/raw ratio below.
+    Corrected vs uncorrected, with the corr/raw ratio below.
     '''
     sm_raw = median_filter(np.nan_to_num(raw_flux).astype(np.float32), size=smooth, mode='reflect')
     sm_corr = median_filter(np.nan_to_num(corr_flux).astype(np.float32), size=smooth, mode='reflect')
@@ -454,7 +454,7 @@ def plot_telluric_correction(wave, raw_flux, corr_flux, obj_dict, savepath=plot_
 
     plt.tight_layout()
     if savepath:
-        save_dir = os.path.join(savepath, obj_dict['exposure_id'])
+        save_dir = os.path.join(savepath, obs_date, obj_dict['exposure_id']) if obs_date else os.path.join(savepath, obj_dict['exposure_id'])
         os.makedirs(save_dir, exist_ok=True)
 
         filename = os.path.join(save_dir, 'telluric_correction.png')

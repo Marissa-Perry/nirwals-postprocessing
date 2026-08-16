@@ -18,12 +18,12 @@ repo_root = proj_dir.parent                    # .../NIRWALS_reduction
 data_dir = proj_dir / 'data'
 output_dir = proj_dir / 'outputs'
 plot_dir = output_dir / 'plots'
-fiber_map_file = data_dir / 'IFU_data' / 'fiber_map_20221018.csv'
+fiber_map_file = data_dir / 'IFU' / 'fiber_map_20221018.csv'
 pipeline_root = repo_root / 'nirwals_pipeline'
 
 
 os.makedirs(plot_dir, exist_ok=True)
-plot_ext_spectra_dir = os.path.join(plot_dir, 'extracted_spectra')
+plot_ext_spectra_dir = os.path.join(plot_dir, 'NIRWALS_DRP_reduced_spectra')
 os.makedirs(plot_ext_spectra_dir, exist_ok=True)
 # -----------------------------------
 
@@ -66,21 +66,6 @@ def pixel_to_wavelength(sci_header, sci_data):
     CRPIX1 = sci_header['CRPIX1']
     n = sci_data.shape[-1]
     return CRVAL1 - (CRPIX1 - 1.) * CDELT1 + np.arange(n) * CDELT1
-
-def select_bright_fibers(flux_all, frac=0.2):
-    '''
-    Fibers whose mean flux exceeds frac * brightest fiber's mean flux.
-    '''
-    mean_flux = np.nanmean(flux_all, axis=1)
-    return np.where(mean_flux > frac * np.nanmax(mean_flux))[0]
-
-def coadd_fibers(flux_all, sigma_all, fibers):
-    '''
-    Sum flux over fibers; errors add in quadrature.
-    '''
-    flux = np.nansum(flux_all[fibers], axis=0)
-    sigma = np.sqrt(np.nansum(sigma_all[fibers]**2, axis=0))
-    return flux, sigma
 
 def get_reduction_products(obs_date, suffix, root=pipeline_root):
     '''

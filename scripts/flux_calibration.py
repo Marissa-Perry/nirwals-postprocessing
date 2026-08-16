@@ -7,7 +7,7 @@ from pathlib import Path
 import glob
 import os
 
-from .functions import select_bright_fibers
+from .fiber_coadd import select_bright_fibers
 
 # -------- filepath params ----------
 this_dir = Path(__file__).resolve().parent     # .../post_reduction_processing/scripts
@@ -143,11 +143,11 @@ def save_throughput(result, outdir=throughput_curve_dir):
     outdir.mkdir(parents=True, exist_ok=True)
     fname = outdir / f"{result['std_name']}_{result['ga_tag']}_throughput.csv"
     np.savetxt(fname, np.column_stack((result['wave'], result['throughput'])), fmt='%f', delimiter=',')
-    print(f'wrote throughput curve: {fname}')
+    print(f'\n\nwrote throughput curve: {fname}')
     return fname
 
 
-def plot_throughput_fit(result, obj_dict, savepath=plot_flux_cal_dir, show=True):
+def plot_throughput_fit(result, obj_dict, savepath=plot_flux_cal_dir, obs_date=None, show=True):
     r = result
     cutw, cutw2 = r['cutw'], r['cutw2']
     fig, ax = plt.subplots(figsize=(9, 4))
@@ -166,7 +166,7 @@ def plot_throughput_fit(result, obj_dict, savepath=plot_flux_cal_dir, show=True)
     ax.legend(fontsize=11)
     plt.tight_layout()
     if savepath:
-        save_dir = os.path.join(savepath, obj_dict['exposure_id'])
+        save_dir = os.path.join(savepath, obs_date, obj_dict['exposure_id']) if obs_date else os.path.join(savepath, obj_dict['exposure_id'])
         os.makedirs(save_dir, exist_ok=True)
 
         filename = os.path.join(save_dir, 'throughput_computation.png')
@@ -174,7 +174,7 @@ def plot_throughput_fit(result, obj_dict, savepath=plot_flux_cal_dir, show=True)
     plt.show() if show else plt.close()
 
 
-def plot_throughput_validation(result, obj_dict, savepath=plot_flux_cal_dir, show=True):
+def plot_throughput_validation(result, obj_dict, savepath=plot_flux_cal_dir, obs_date=None, show=True):
     '''
     Apply throughput back to the standard as validation.
     '''
@@ -198,7 +198,7 @@ def plot_throughput_validation(result, obj_dict, savepath=plot_flux_cal_dir, sho
     ax2.set_xlabel(r'Wavelength [$\AA$]', fontsize=13)
     plt.tight_layout()
     if savepath:
-        save_dir = os.path.join(savepath, obj_dict['exposure_id'])
+        save_dir = os.path.join(savepath, obs_date, obj_dict['exposure_id']) if obs_date else os.path.join(savepath, obj_dict['exposure_id'])
         os.makedirs(save_dir, exist_ok=True)
 
         filename = os.path.join(save_dir, 'throughput_validation.png')
@@ -243,8 +243,8 @@ def flux_calibrate(wave, flux, sigma, throughput_wave, throughput_values,
     good = thru > 0
     F_jy_corr = np.full_like(F_jy, np.nan, dtype=np.float64)
     F_err_jy_corr= np.full_like(F_err_jy, np.nan, dtype=np.float64)
-    F_jy_corr[good] = F_jy[good] / thru[good]
-    F_err_jy_corr[good] = F_err_jy[good] / thru[good]
+    F_jy_corr[..., good] = F_jy[..., good] / thru[..., good]  # using ellipses to allow for 2D and 1D input
+    F_err_jy_corr[..., good] = F_err_jy[..., good] / thru[..., good]
 
     # J/pixel -> F_lambda: divide out time, area, dispersion
     telarea = telescope_area(pupil_start, pupil_end)
@@ -294,8 +294,17 @@ def write_fluxcal_fits(template_file, wave, flux, sigma, out_file, throughput_fi
         # --- SCI: flux-calibrated, telluric-corrected flux ---
         sci = hdul['SCI']
         sci.data = flux.astype(np.float32)
-        sci.header.add_history('Telluric corrected and flux calibrated')
-        sci.header.add_history(f'Flux calibration throughput: {os.path.basename(throughput_file)}')
+        _wave = np.asarray(wave, dtype=np.float64)
+        if 'CRVAL1' in sci.header:
+            sci.header['CRVAL1'] = float(_wave[0])
+            sci.header['CDELT1'] = float(_wave[1] - _wave[0])
+            sci.header['CRPIX1'] = 1.0
+            
+        if throughput_file is not None:
+            sci.header.add_history('Telluric corrected and flux calibrated')
+            sci.header.add_history(f'Flux calibration throughput: {os.path.basename(throughput_file)}')
+        else:
+            sci.header.add_history('Telluric corrected (no flux calibration -- no specphot standard given)')
 
         # --- ERR: sigma, carrying the SCI spectral WCS ---
         err_hdu = fits.ImageHDU(data=sigma.astype(np.float32), name='ERR')
@@ -368,7 +377,7 @@ def plot_throughput(throughput_wave, throughput_values, tell_windows=None, wave_
     plt.show() if show else plt.close()
 
 
-def plot_flux_calibration(wave, counts, counts_err, flux_cal, flux_cal_err, gpcnt_wave, gpcnt_arr, obj_dict, title='', savepath=plot_flux_cal_dir, smooth=10, show=True):
+def plot_flux_calibration(wave, counts, counts_err, flux_cal, flux_cal_err, gpcnt_wave, gpcnt_arr, obj_dict, title='', savepath=plot_flux_cal_dir, obs_date=None, smooth=10, show=True):
     '''
     Two-panel flux-calibration diagnostic for a single spectrum.
       top:    input counts/s (+ 1-sigma band, smoothed overlay)
@@ -417,7 +426,7 @@ def plot_flux_calibration(wave, counts, counts_err, flux_cal, flux_cal_err, gpcn
 
     plt.tight_layout()
     if savepath:
-        save_dir = os.path.join(savepath, obj_dict['exposure_id'])
+        save_dir = os.path.join(savepath, obs_date, obj_dict['exposure_id']) if obs_date else os.path.join(savepath, obj_dict['exposure_id'])
         os.makedirs(save_dir, exist_ok=True)
 
         filename = os.path.join(save_dir, 'telluric_corr_and_flux_cal.png')
