@@ -10,4 +10,4 @@ __pycache__/
 outputs/
 
 # all Rayner standard data files
-Rayner_standard_data/
+#Rayner_standard_data/
