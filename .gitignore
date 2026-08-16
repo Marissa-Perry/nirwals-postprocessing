@@ -11,3 +11,8 @@ outputs/
 
 # all Rayner standard data files
 #Rayner_standard_data/
+
+# Rayner standard data files, keep paper PDF:
+*.fits
+*.tar
+*.txt
