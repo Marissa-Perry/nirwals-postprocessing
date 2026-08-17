@@ -248,14 +248,12 @@ def write_combined_fits(combined, out_file, throughput_file=None):
     # --- 0 PRIMARY: empty, global header only ---
     pri = fits.PrimaryHDU()
     pri.header['OBJECT'] = (ref_header.get('OBJECT', combined['exp'].get('object', '')), 'science target')
-    pri.header['NDITHER'] = (combined.get('n_dither', 1), 'number of dithered exposures combined')
+    pri.header['NDITHER'] = (combined.get('n_dither', 1), 'number of combined dithered exposures')
     pri.header['NWAVE'] = (int(keep.sum()), 'number of wavelength pixels')
     pri.header['NFIBER'] = (int(combined['flux_all'].shape[0]), 'total fiber rows (NFIBER_PER_EXP * NEXP)')
     pri.header.add_history(f'Edge-clipped: {CLIP_WAVE_BLUE_RANGE:.0f} A blue, {CLIP_WAVE_RED_RANGE:.0f} A red')
     pri.header.add_history('Primary product: per-fiber spectra (telluric-corrected'
                            + (', flux-calibrated)' if throughput_file else ')'))
-    if throughput_file is not None:
-        pri.header.add_history(f'Flux calibration throughput: {os.path.basename(throughput_file)}')
     hdus = [pri]
 
     # --- 1 FLUX (carries the spectral WCS on the wavelength axis) ---
@@ -265,33 +263,28 @@ def write_combined_fits(combined, out_file, throughput_file=None):
             flux_hdu.header[k] = ref_header[k]
     if 'CRPIX1' in flux_hdu.header:
         flux_hdu.header['CRPIX1'] = flux_hdu.header['CRPIX1'] - i0
-    hdus.append(stamp(flux_hdu, 'stacked per-fiber spectra', bunit))
+    hdus.append(stamp(flux_hdu, 'row-stacked fiber spectra in units of ergs/s/cm^2/A^-1', bunit))
 
     # --- 2 IVAR ---
     sigma = combined['sigma_all'][:, keep]
     fiber_ivar = np.zeros_like(sigma)
     gp = np.isfinite(sigma) & (sigma > 0)
     fiber_ivar[gp] = 1.0 / sigma[gp] ** 2
-    hdus.append(stamp(fits.ImageHDU(fiber_ivar.astype(np.float32), name='IVAR'),
-                      'inverse variance of FLUX', f'({bunit})^-2'))
+    hdus.append(stamp(fits.ImageHDU(fiber_ivar.astype(np.float32), name='IVAR'), 'inverse variance of FLUX', f'({bunit})^-2'))
 
     # --- 3 MASK (1 = bad; from gpcnt == 0) ---
     if combined.get('mask_all') is not None:
-        hdus.append(stamp(fits.ImageHDU(combined['mask_all'][:, keep].astype(np.int16), name='MASK'),
-                          'bad-pixel mask (1 = bad, gpcnt == 0)'))
+        hdus.append(stamp(fits.ImageHDU(combined['mask_all'][:, keep].astype(np.int16), name='MASK'), 'bad-pixel mask (1 = bad)'))
 
     # --- 4 WAVE ---
-    wave_hdu = stamp(fits.ImageHDU(wave.astype(np.float64), name='WAVE'), 'wavelength vector',
-                     ref_header.get('CUNIT1', 'Angstrom'))
+    wave_hdu = stamp(fits.ImageHDU(wave.astype(np.float64), name='WAVE'), 'wavelength vector in units of A', ref_header.get('CUNIT1', 'Angstrom'))
     hdus.append(wave_hdu)
 
     # --- 5 SPECRES / 6 SPECRESD ---
     if combined.get('specres') is not None:
-        hdus.append(stamp(fits.ImageHDU(np.asarray(combined['specres'])[keep].astype(np.float32), name='SPECRES'),
-                          'median spectral resolution R = lambda/FWHM vs wave'))
+        hdus.append(stamp(fits.ImageHDU(np.asarray(combined['specres'])[keep].astype(np.float32), name='SPECRES'), 'median spectral resolution (R)'))
     if combined.get('specresd') is not None:
-        hdus.append(stamp(fits.ImageHDU(np.asarray(combined['specresd'])[keep].astype(np.float32), name='SPECRESD'),
-                          '1-sigma scatter of R across fibers'))
+        hdus.append(stamp(fits.ImageHDU(np.asarray(combined['specresd'])[keep].astype(np.float32), name='SPECRESD'), 'standard deviation (1-sigma) of SPECRES'))
 
     # --- 7 OBSINFO ---
     if combined.get('obsinfo'):
@@ -302,24 +295,20 @@ def write_combined_fits(combined, out_file, throughput_file=None):
                 return fits.Column(name=k.upper(), format=f'{max(len(v) for v in vals)}A', array=np.array(vals))
             return fits.Column(name=k.upper(), format='E', array=np.array(vals, dtype=float))
         obs_hdu = fits.BinTableHDU.from_columns([col(k) for k in keys], name='OBSINFO')
-        obs_hdu.header['EXTDESC'] = ('per-exposure metadata (one row per exposure combined)', 'extension contents')
+        obs_hdu.header['EXTDESC'] = ('per-exposure metadata (one row per exposure)', 'extension contents')
         hdus.append(obs_hdu)
 
     # --- 8 XPOS / 9 YPOS (one value per fiber row) ---
-    hdus.append(stamp(fits.ImageHDU(combined['x_arcsec'].astype(np.float32), name='XPOS'),
-                      'fiber X position relative to IFU centre', 'arcsec'))
-    hdus.append(stamp(fits.ImageHDU(combined['y_arcsec'].astype(np.float32), name='YPOS'),
-                      'fiber Y position relative to IFU centre', 'arcsec'))
+    hdus.append(stamp(fits.ImageHDU(combined['x_arcsec'].astype(np.float32), name='XPOS'), 'fiber X-position relative to IFU center', 'arcsec'))
+    hdus.append(stamp(fits.ImageHDU(combined['y_arcsec'].astype(np.float32), name='YPOS'), 'fiber Y-position relative to IFU center', 'arcsec'))
 
     # --- 10 SKYCORR ---
     if combined.get('skycorr') is not None:
-        hdus.append(stamp(fits.ImageHDU(combined['skycorr'][:, keep].astype(np.float32), name='SKYCORR'),
-                          'sky-correction term (cs - ss)', bunit))
+        hdus.append(stamp(fits.ImageHDU(combined['skycorr'][:, keep].astype(np.float32), name='SKYCORR'), 'subtracted sky emission', bunit))
 
     # --- 11 TELLCORR ---
     if combined.get('tellcorr') is not None:
-        hdus.append(stamp(fits.ImageHDU(np.asarray(combined['tellcorr'])[keep].astype(np.float32), name='TELLCORR'),
-                          'telluric transmission applied to the target'))
+        hdus.append(stamp(fits.ImageHDU(np.asarray(combined['tellcorr'])[keep].astype(np.float32), name='TELLCORR'), 'telluric transmission correction'))
 
     # --- 12 FLUXCAL (throughput curve, interpolated onto WAVE) ---
     if throughput_file is not None:
@@ -333,12 +322,10 @@ def write_combined_fits(combined, out_file, throughput_file=None):
 
     # --- 13 CUBE / 14 CUBE_IVAR ---
     cube_hdu = fits.ImageHDU(combined['cube'][keep].astype(np.float32), name='CUBE')
-    cube_hdu.header['EXTDESC'] = ('Shepard-reconstructed datacube (imaging product)', 'extension contents')
+    cube_hdu.header['EXTDESC'] = ('3d data cube (all exposures combined)', 'extension contents')
     cube_hdu.header['BUNIT'] = bunit
-    cube_hdu.header.add_history('Cube reconstruction by Antoine Mahoro (cube_ifu.py); method: Law et al. 2016')
     hdus.append(cube_hdu)
-    hdus.append(stamp(fits.ImageHDU(combined['ivar_cube'][keep].astype(np.float32), name='CUBE_IVAR'),
-                      'inverse variance of CUBE', f'({bunit})^-2'))
+    hdus.append(stamp(fits.ImageHDU(combined['ivar_cube'][keep].astype(np.float32), name='CUBE_IVAR'), 'inverse variance of CUBE', f'({bunit})^-2'))
 
     fits.HDUList(hdus).writeto(out_file, overwrite=True)
 
