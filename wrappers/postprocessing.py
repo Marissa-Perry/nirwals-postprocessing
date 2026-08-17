@@ -6,7 +6,8 @@ import sys
 from datetime import datetime
 
 from ..scripts.misc_functions import (get_reduced_exposures, get_reduced_spectra,
-                                 plot_science_reduction_results, plot_ext_spectra_dir)
+                                 plot_science_reduction_results, plot_ext_spectra_dir,
+                                 load_fiber_map_dict)
 from ..scripts.telluric_correction import (query_star_properties, fit_telluric_star_model, fit_telluric_poly_model, apply_telluric_model, plot_star_telluric_model_fit, plot_poly_telluric_model_fit, plot_telluric_correction)
 from ..scripts.flux_calibration import (compute_throughput, save_throughput, flux_calibrate_exposure, write_fluxcal_fits, plot_throughput_fit, plot_throughput_validation, plot_flux_calibration, processed_data_dir)
 from ..scripts.dither_combine import (combine_dithers, write_combined_fits, plot_fiber_map, plot_cube_image, plot_coadded_spectrum, clip_edges_mask)
@@ -144,7 +145,7 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
     Star-model telluric fit to a co-added telluric-standard star spectrum.
     """
     star_props = query_star_properties(standard_name)
-    wave, flux_all, sigma_all, _, _ = get_reduced_spectra(standard_exp, standard_exposures)
+    wave, flux_all, sigma_all = get_reduced_spectra(standard_exp, standard_exposures)
     flux, sigma, ivar, gpm = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
 
     fit = fit_telluric_star_model(
@@ -162,7 +163,7 @@ def fit_telluric_poly(target_exp, target_exposures, polyorder=3, disp=False, plo
     """
     Poly-model telluric fit, fit directly to a co-added spectrum (target or spec-phot standard).
     """
-    wave, flux_all, sigma_all, _, _ = get_reduced_spectra(target_exp, target_exposures)
+    wave, flux_all, sigma_all = get_reduced_spectra(target_exp, target_exposures)
     flux, sigma, ivar, gpm = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
 
     fit = fit_telluric_poly_model(
@@ -246,7 +247,7 @@ def get_throughput_file(sci_exposures, args, plot=True):
           'with PypeIt poly model, then computing throughput', end='\n\n')
     specphot_fit = fit_telluric_poly(specphot_exp, specphot_exposures, polyorder=args.specphot_polyorder, obs_date=args.obs_date)
 
-    wave, _, sigma_all, _, _ = get_reduced_spectra(specphot_exp, specphot_exposures)
+    wave, _, sigma_all = get_reduced_spectra(specphot_exp, specphot_exposures)
     flux_all = np.asarray(specphot_exp['flux'], dtype=float)
     res = apply_telluric_model(flux_all, sigma_all, wave, specphot_fit['transmission'], specphot_fit['wave'])
     specphot_exp['flux'][:] = res['flux'].astype(specphot_exp['flux'].dtype)
@@ -268,7 +269,7 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
     Apply telluric correction (and flux calibration, if throughput_file is
     given) to one science exposure's full per-fiber 2D spectrum.
     """
-    wave, flux_all, sigma_all, gpcnt_wave, gpcnt_data = get_reduced_spectra(sci_exp, exposures)
+    wave, flux_all, sigma_all = get_reduced_spectra(sci_exp, exposures)
  
     tcorr = apply_telluric_model(flux_all, sigma_all, wave, telluric_fit['transmission'], telluric_fit['wave'])
  
@@ -282,16 +283,45 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
         flux, sigma = flux_calibrate_exposure(wave, tcorr['flux'], tcorr['sigma'], sci_exp, throughput_file)
         if plot:
             fluxcal_1d, fluxcal_sigma_1d, _, _ = coadd_bright_fibers_with_ivar(flux, sigma)
-            # collapse per-fiber good-pixel counts over the same bright fibers that went into the co-add above
+            # number of good (unmasked) bright fibers per wavelength, from the reduced MASK
             bright = select_bright_fibers(flux, frac=0.2)
-            gpcnt_1d = np.nansum(gpcnt_data[bright], axis=0)
+            m = sci_exp['ssc'].get('mask')
+            if m is not None:
+                m = np.asarray(m)
+                if m.shape[0] != flux.shape[0]:
+                    m = np.delete(m, load_fiber_map_dict()['sky_indices'], axis=0)
+                good_fibers_1d = np.nansum(m[bright] == 0, axis=0)
+            else:
+                good_fibers_1d = np.zeros_like(wave)
             plot_flux_calibration(wave, tcorr_1d, tcorr_sigma_1d, fluxcal_1d, fluxcal_sigma_1d,
-                                   gpcnt_wave, gpcnt_1d, sci_exp, obs_date=obs_date, show=False)
+                                   wave, good_fibers_1d, sci_exp, obs_date=obs_date, show=False)
     else:
         flux, sigma = tcorr['flux'], tcorr['sigma']
  
+    # --- extra per-exposure products for the MaNGA-style 2D FITS (read from the reduced extensions) ---
+    fmap = load_fiber_map_dict(); sky_idx = fmap['sky_indices']
+    ssc = sci_exp['ssc']
+    n_obj = flux_all.shape[0]
+
+    def _obj_fibers(arr):                       # drop sky fibers if the array still carries them
+        if arr is None:
+            return None
+        arr = np.asarray(arr)
+        return np.delete(arr, sky_idx, axis=0) if arr.shape[0] != n_obj else arr
+
+    mask = _obj_fibers(ssc.get('mask'))                                           # (n_fib, n_wave), 1 = bad
+    skycorr = _obj_fibers(ssc.get('skycorr'))                                     # (n_fib, n_wave) sky model, or None
+    tellcorr = np.interp(wave, telluric_fit['wave'], telluric_fit['transmission'], left=np.nan, right=np.nan)  # 1D transmission
+    specres = np.interp(wave, ssc['wave'], ssc['spec_res']) if ssc.get('spec_res') is not None else None
+    specresd = np.interp(wave, ssc['wave'], ssc['specresd']) if ssc.get('specresd') is not None else None
+
+    obsinfo = {'exposure_id': sci_exp['exposure_id'], 'exptime': ssc.get('exptime'),
+               'airmass': ssc.get('airmass'), 'gain': ssc.get('gain'), 'grating_angle': ssc.get('grating_angle')}
+
     return {'wave': wave, 'flux': flux, 'sigma': sigma,
-            'gpcnt_wave': gpcnt_wave, 'gpcnt_data': gpcnt_data, 'exp': sci_exp}
+            'exp': sci_exp,
+            'mask': mask, 'skycorr': skycorr, 'tellcorr': tellcorr,
+            'specres': specres, 'specresd': specresd, 'obsinfo': obsinfo}
 
 
 def output_paths(ssc_file, obs_date, suffixes):
@@ -339,7 +369,7 @@ def write_combined_outputs(combined, obs_date, throughput_file, plot=True):
     write_fluxcal_fits(template_file=ssc_file, wave=combined['wave'][keep], flux=flux_1d[keep], sigma=sigma_1d[keep],
                         out_file=str(out_1d), throughput_file=throughput_file)
 
-    print(f'\n\nwrote {out_2d}  (PRIMARY=fibers, CUBE secondary)')
+    print(f'\n\nwrote {out_2d}')
     print(f'wrote {out_1d}', end='\n\n')
 
 

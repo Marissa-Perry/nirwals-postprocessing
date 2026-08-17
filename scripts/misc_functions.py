@@ -94,11 +94,12 @@ def exposure_dict(filepath, product_type='science'):
                         'primary' for raw detector frames
     '''
     with fits.open(filepath) as hdul:
-        h0 = hdul['PRIMARY'].header
         ext_names = [x.name for x in hdul]
+        # observation metadata now lives in OBSINFO (fall back to PRIMARY for older files)
+        meta = hdul['OBSINFO'].header if 'OBSINFO' in ext_names else hdul['PRIMARY'].header
 
         def hdr(key, cast=float):
-            val = h0.get(key)
+            val = meta.get(key)
             if val is None:
                 return None
             try:
@@ -106,22 +107,28 @@ def exposure_dict(filepath, product_type='science'):
             except (TypeError, ValueError):
                 return None
 
-        # primary products may not carry a named SCI extension
-        sci = hdul['SCI'] if 'SCI' in ext_names else hdul[0]
+        # flux extension: FLUX (new) -> SCI (old) -> primary
+        if 'FLUX' in ext_names:
+            sci = hdul['FLUX']
+        elif 'SCI' in ext_names:
+            sci = hdul['SCI']
+        else:
+            sci = hdul[0]
         wave = hdul['WAVE'] if 'WAVE' in ext_names else None
         specres = hdul['SPECRES'] if 'SPECRES' in ext_names else None
+        specresd = hdul['SPECRESD'] if 'SPECRESD' in ext_names else None
         specresc = hdul['SPECRES_COEFF_PER_FIBER'] if 'SPECRES_COEFF_PER_FIBER' in ext_names else None
 
         # airmass value from metadata is invalid, computing using telescope altitude
-        tel_alt = float(h0['TELALT'])
+        tel_alt = float(meta['TELALT'])
         airmass = 1.0 / np.sin(np.radians(tel_alt))
 
         d = {
             'file': filepath,
             'filename': Path(filepath).name,
             'product_type': product_type,
-            'object': h0['OBJECT'],
-            'exp_type': h0['EXPTYPE'],
+            'object': meta['OBJECT'],
+            'exp_type': meta['EXPTYPE'],
             'exptime': hdr('EXPTIME'),
             'airmass': airmass, 
             'gain': hdr('GAIN'),
@@ -129,13 +136,14 @@ def exposure_dict(filepath, product_type='science'):
             'pupil_start': hdr('PUPSTA'),
             'pupil_end': hdr('PUPEND'),
             'ngroups': hdr('NGROUPS'),
-            'cfw': str(h0.get('CFWCURZ', ''))[-12:],
+            'cfw': str(meta.get('CFWCURZ', ''))[-12:],
 
             'flux': sci.data,
             'spec_res': np.asarray(specres.data, dtype=float) if specres is not None else None,
+            'specresd': np.asarray(specresd.data, dtype=float) if specresd is not None else None,
             'specres_coeffs': np.asarray(specresc.data, dtype=float) if specresc is not None else None,
-            
-            'primary_header': h0,
+
+            'primary_header': meta,
             'sci_header': sci.header,
             'specres_header': specres.header if specres is not None else None,
         }
@@ -152,8 +160,8 @@ def exposure_dict(filepath, product_type='science'):
                 d['wave'] = pixel_to_wavelength(sci.header, sci.data)  # legacy fallback
 
         # coordinates
-        ra_str = h0.get('RA', '')
-        dec_str = h0.get('DEC', '')
+        ra_str = meta.get('RA', '')
+        dec_str = meta.get('DEC', '')
         if isinstance(ra_str, str) and isinstance(dec_str, str) and ra_str.strip() and dec_str.strip():
             try:
                 c = SkyCoord(ra_str, dec_str, unit=(u.hourangle, u.deg))
@@ -163,8 +171,8 @@ def exposure_dict(filepath, product_type='science'):
         else:
             d['ra'], d['dec'] = None, None
 
-        # other extension data and headers
-        for ext in ('ERR', 'GPCNT'):
+        # per-pixel arrays: IVAR/MASK/SKYCORR (new) plus legacy ERR/GPCNT
+        for ext in ('IVAR', 'MASK', 'SKYCORR', 'ERR', 'GPCNT'):
             if ext in ext_names:
                 d[ext.lower()] = hdul[ext].data
                 d[ext.lower() + '_header'] = hdul[ext].header
@@ -225,61 +233,19 @@ def get_reduced_exposures(obs_date, suffixes=('ssc', 'cf', 'a'), root=pipeline_r
     return exposures
 
 
-def sci_to_gpcnt_spectrum(data, gpm, sci_wave, gpcnt_wave):
+def variance_from_ivar(ivar, sky_indices=None):
     """
-    Align the SCI data array to the GPCNT wavelength grid by trimming
-    the blue-end extension added during rectification.
-    
-    Returns data_aligned with same shape as gpm.
+    Per-pixel variance (1/IVAR) from a reduced product's IVAR array. Optionally
+    drops sky fibers so the result matches the object-fiber astrometry.
     """
-    sci_start = np.argmin(np.abs(sci_wave - gpcnt_wave[0]))
-    sci_end = sci_start + gpm.shape[1]
+    ivar = np.asarray(ivar, dtype=float)
+    if sky_indices is not None and ivar.ndim == 2:
+        ivar = np.delete(ivar, sky_indices, axis=0)
+    var = np.full(ivar.shape, np.nan)
+    good = ivar > 0
+    var[good] = 1.0 / ivar[good]
+    return var
 
-    data_aligned = data[:, sci_start:sci_end]
-    wavelength_aligned = sci_wave[sci_start:sci_end]
-
-    return data_aligned, wavelength_aligned
-
-
-def process_a_fits_reduced_data(sci_header, sci_data, gpcnt_header, gpcnt_data, exp_time, gain, full_map_sky_indices):
-    '''
-    steps for extracting wavelength and flux data for .a.fits reduced files:
-        - remove extra (sky) fibers from science data (only for .a.fits files)
-        - convert x-pixel to wavelength
-        - align the science spectrum with its GPCNT array
-        - compute Poisson noise error on spectra
-    '''
-    # REMOVE SKY FIBERS
-    sci_data = np.delete(sci_data, full_map_sky_indices, axis=0)
-    gpcnt_data = np.delete(gpcnt_data, full_map_sky_indices, axis=0)
-
-    # X-PIXEL to WAVELENGTH
-    sci_wave = pixel_to_wavelength(sci_header, sci_data)
-    gpcnt_wave = pixel_to_wavelength(gpcnt_header, gpcnt_data)
-
-    # Align SCI to GPCNT wavelength grid
-    sci_data_aligned, sci_wave_aligned = sci_to_gpcnt_spectrum(sci_data, gpcnt_data, sci_wave, gpcnt_wave)
-
-    # ERROR
-    # Reconstruct the renormalization factor that was applied per fiber
-    # (gpmarr.mean() / gpmarr), so we can get the pre-renormalization (per-pixel-averaged) flux, then redo the error propagation consistently
-    gpm_mean_per_fiber = np.nanmean(gpcnt_data, axis=1, keepdims=True)
-    renorm = gpm_mean_per_fiber.repeat(sci_data_aligned.shape[1], axis=1)
-    mask = gpcnt_data > 0
-
-    # un-normalized counts per pixel
-    counts_per_pixel = np.full(sci_data_aligned.shape, np.nan, dtype=np.float32)
-    counts_per_pixel[mask] = (sci_data_aligned[mask] / renorm[mask]) * exp_time
-
-    # Poisson error
-    # N_e = gain * N_ADU --> N_ADU = N_e / gain
-    sigma_per_pixel = np.sqrt(np.abs(counts_per_pixel) / gain)   # ADU
-
-    # divide by exp time to convert ADU into counts/s
-    sci_data_sigma = np.full(sci_data_aligned.shape, np.nan, dtype=np.float32)
-    sci_data_sigma[mask] = (sigma_per_pixel[mask] / exp_time) * renorm[mask]
-
-    return sci_wave_aligned, sci_data_aligned, sci_data_sigma, gpcnt_wave, gpcnt_data
 
 def find_matching_sky(target_exp, exposures, tol=1.0):
     '''
@@ -291,42 +257,39 @@ def find_matching_sky(target_exp, exposures, tol=1.0):
             return exp
     return None
 
-def process_reduced_data(sci_header, sci_data, a_wave=None, a_data_sigma=None, sky_a_wave=None, sky_a_sigma=None):
-    '''
-    Wavelength solution + error for the sky-subtracted reduced (ssc) data.
-    '''
-    sci_wave = pixel_to_wavelength(sci_header, sci_data)
-    if a_wave is None or a_data_sigma is None:
-        return sci_wave, sci_data, None
-
-    var_obj = interp1d(a_wave, a_data_sigma.astype(np.float64)**2, axis=1, bounds_error=False, fill_value=np.nan)(sci_wave)
-
-    if sky_a_wave is not None and sky_a_sigma is not None:
-        var_sky = interp1d(sky_a_wave, sky_a_sigma.astype(np.float64)**2, axis=1, bounds_error=False, fill_value=np.nan)(sci_wave)
-        total_var = var_obj + var_sky   # sky subtraction adds sky Poisson noise
-    else:
-        total_var = var_obj             # if no sky data passed, approximate variance with a lower bound: (pre-sky-sub) Poisson variance, interpolated onto the ssc grid. 
-
-    return sci_wave, sci_data, np.sqrt(total_var)
 
 def get_reduced_spectra(sci_exp, all_exp):
     '''
-    Reduced flux + sigma (a-file variance + sky a-file variance) for one reduced science exposure.
+    Flux + sigma for one reduced science exposure, built from the reduced IVAR:
+    the object variance (from the 'a' product) plus, when a matching sky exposure
+    exists, the sky variance -- both interpolated onto the ssc grid. Sky fibers
+    are removed so the arrays match the object-fiber astrometry.
     '''
     fmap = load_fiber_map_dict()
+    sky_idx = fmap['sky_indices']
 
+    ssc = sci_exp['ssc']
+    wave = np.asarray(ssc['wave'], dtype=float)
+    flux_all = np.asarray(ssc['flux'], dtype=float)
+
+    # object variance from the 'a' product, interpolated onto the ssc grid
     a = sci_exp['a']
-    a_wave, _, a_sigma, gpcnt_wave, gpcnt_data = process_a_fits_reduced_data(a['sci_header'], a['flux'], a['gpcnt_header'], a['gpcnt'], a['exptime'], a['gain'], fmap['sky_indices'])
+    var_obj = interp1d(np.asarray(a['wave'], float), variance_from_ivar(a['ivar'], sky_idx),
+                       axis=1, bounds_error=False, fill_value=np.nan)(wave)
 
-    # find matching sky exposures
+    # keep flux on the same (object) fibers as the variance
+    if flux_all.shape[0] != var_obj.shape[0]:
+        flux_all = np.delete(flux_all, sky_idx, axis=0)
+
+    total_var = var_obj
     sky_exp = find_matching_sky(sci_exp, all_exp)
     if sky_exp is not None:
         sa = sky_exp['a']
-        sky_a_wave, _, sky_a_sigma, _, _ = process_a_fits_reduced_data(sa['sci_header'], sa['flux'], sa['gpcnt_header'], sa['gpcnt'],sa['exptime'], sa['gain'], fmap['sky_indices'])
+        var_sky = interp1d(np.asarray(sa['wave'], float), variance_from_ivar(sa['ivar'], sky_idx),
+                           axis=1, bounds_error=False, fill_value=np.nan)(wave)
+        total_var = var_obj + var_sky   # sky subtraction adds sky Poisson noise
 
-    wave, flux_all, sigma_all = process_reduced_data(sci_exp['ssc']['sci_header'], sci_exp['ssc']['flux'], a_wave, a_sigma, sky_a_wave, sky_a_sigma) 
-    return wave, flux_all, sigma_all, gpcnt_wave, gpcnt_data
-
+    return wave, flux_all, np.sqrt(total_var)
 
 def plot_science_reduction_results(obs_date, outdir=plot_ext_spectra_dir, smooth=10, show=False, root=pipeline_root):
     """
@@ -351,10 +314,15 @@ def plot_science_reduction_results(obs_date, outdir=plot_ext_spectra_dir, smooth
         os.makedirs(save_dir, exist_ok=True)
 
         a = e['a']
-        a_wave, a_data, a_data_sigma, gpcnt_wave, gpcnt_data = process_a_fits_reduced_data(a['sci_header'], a['flux'], a['gpcnt_header'], a['gpcnt'], a['exptime'], a['gain'], sky_indices)
+        a_wave = np.asarray(a['wave'], dtype=float)
+        a_data = np.delete(np.asarray(a['flux'], dtype=float), sky_indices, axis=0)
+        a_data_sigma = np.sqrt(variance_from_ivar(a['ivar'], sky_indices))
+        a_mask = (np.delete(np.asarray(a['mask'], dtype=float), sky_indices, axis=0)
+                  if a.get('mask') is not None else np.zeros_like(a_data))
 
-        ssc_wave, ssc_data, ssc_data_sigma = process_reduced_data(e['ssc']['sci_header'], e['ssc']['flux'], a_wave, a_data_sigma)
-        cf_wave, cf_data = e['cf']['wave'], e['cf']['flux']
+        ssc_wave, ssc_data, ssc_data_sigma = get_reduced_spectra(e, exposures)
+        cf_wave = np.asarray(e['cf']['wave'], dtype=float)
+        cf_data = np.delete(np.asarray(e['cf']['flux'], dtype=float), sky_indices, axis=0)
 
         # fiber axes must line up after sky removal
         assert a_data.shape[0] == ssc_data.shape[0] == cf_data.shape[0], \
@@ -369,8 +337,7 @@ def plot_science_reduction_results(obs_date, outdir=plot_ext_spectra_dir, smooth
             flux_cf = cf_data[fiber, :]
             flux_ssc = ssc_data[fiber, :]
             err_ssc = ssc_data_sigma[fiber, :]
-            gpm_arr = gpcnt_data[fiber, :]
-            mean_gp = np.nanmean(gpm_arr)
+            mask_arr = a_mask[fiber, :]
 
             med_a = median_filter(np.nan_to_num(flux_a).astype(np.float32), size=smooth, mode='reflect')
             med_ssc = median_filter(np.nan_to_num(flux_ssc).astype(np.float32), size=smooth, mode='reflect')
@@ -397,11 +364,9 @@ def plot_science_reduction_results(obs_date, outdir=plot_ext_spectra_dir, smooth
             ax_flux.legend(fontsize=12, loc='upper left')
 
             # --- bottom: number of good pixels ---
-            ax_gpm.step(gpcnt_wave, gpm_arr, where='mid', color='grey', alpha=0.8, linewidth=0.6)
-            ax_gpm.fill_between(gpcnt_wave, 0, gpm_arr, step='mid', color='black', alpha=0.15)
-            ax_gpm.axhline(mean_gp, color='black', lw=1, linestyle='dashed')
-            # ax_gpm.text(x=np.median(gpcnt_wave), y=mean_gp, s='mean # of good pixels',ha='center', va='bottom', color='black', fontsize=10)
-            ax_gpm.set_ylabel('# good pixels', fontsize=12, labelpad=15)
+            ax_gpm.step(a_wave, mask_arr, where='mid', color='grey', alpha=0.8, linewidth=0.6)
+            ax_gpm.fill_between(a_wave, 0, mask_arr, step='mid', color='black', alpha=0.15)
+            ax_gpm.set_ylabel('bad-pixel mask', fontsize=12, labelpad=15)
             ax_gpm.set_xlabel(r'Observed Wavelength [$\AA$]', fontsize=15, labelpad=15)
             ax_gpm.set_xlim(np.min(a_wave), np.max(a_wave))
 

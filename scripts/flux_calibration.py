@@ -277,68 +277,61 @@ def flux_calibrate_exposure(wave, flux, sigma, exp, throughput_file, fibfil=0.62
 
 def write_fluxcal_fits(template_file, wave, flux, sigma, out_file, throughput_file):
     '''
-    Write a flux-calibrated spectrum (1D or 2D) to FITS, copying headers from
-    template_file, replacing SCI with flux and adding/replacing ERR.
+    Write a flux-calibrated 1D/2D spectrum as: PRIMARY (obs metadata) + SCI (flux),
+    ERR (sigma), WAVE, SPECRES, SPECRESD. Metadata and resolution are taken from the
+    reduced template (new MaNGA-style products carry an OBSINFO extension and FLUX
+    instead of SCI); the output keeps the SCI/ERR layout the 1D readers expect.
     '''
-    def update_hdu(hdul, hdu):
-        '''Replace an extension of the same name if present, else append.'''
-        names = [h.name for h in hdul]
-        if hdu.name in names:
-            hdul[names.index(hdu.name)] = hdu
-        else:
-            hdul.append(hdu)
+    _wave = np.asarray(wave, dtype=np.float64)
+    with fits.open(template_file) as tpl:
+        names = [h.name for h in tpl]
+        flux_hdu = tpl['FLUX'] if 'FLUX' in names else tpl['SCI']              # template flux ext (WCS source)
+        meta = tpl['OBSINFO'].header if 'OBSINFO' in names else tpl['PRIMARY'].header
+        tpl_wave = np.asarray(tpl['WAVE'].data, float) if 'WAVE' in names else None
 
-    with fits.open(template_file) as hdul:
-        names = [h.name for h in hdul]
+        # PRIMARY: carry the observation metadata (kept here so downstream readers find it)
+        pri = fits.PrimaryHDU()
+        pri.header.extend(meta, strip=True, update=True)
+        for k in ('EXTNAME', 'EXTVER', 'EXTDESC'):
+            pri.header.remove(k, ignore_missing=True)   # don't inherit the OBSINFO extension's name
 
-        # --- SCI: flux-calibrated, telluric-corrected flux ---
-        sci = hdul['SCI']
-        sci.data = flux.astype(np.float32)
-        _wave = np.asarray(wave, dtype=np.float64)
-        if 'CRVAL1' in sci.header:
-            sci.header['CRVAL1'] = float(_wave[0])
-            sci.header['CDELT1'] = float(_wave[1] - _wave[0])
-            sci.header['CRPIX1'] = 1.0
-            
+        # SCI: flux, with a linear wavelength WCS matching `wave`
+        sci = fits.ImageHDU(data=np.asarray(flux, np.float32), name='SCI')
+        for k in ('CTYPE1', 'CUNIT1'):
+            if k in flux_hdu.header:
+                sci.header[k] = flux_hdu.header[k]
+        sci.header['CRPIX1'] = 1.0
+        sci.header['CRVAL1'] = float(_wave[0])
+        sci.header['CDELT1'] = float(_wave[1] - _wave[0])
+        sci.header.add_history('Telluric corrected and flux calibrated' if throughput_file is not None
+                               else 'Telluric corrected (no flux calibration -- no specphot standard given)')
         if throughput_file is not None:
-            sci.header.add_history('Telluric corrected and flux calibrated')
             sci.header.add_history(f'Flux calibration throughput: {os.path.basename(throughput_file)}')
-        else:
-            sci.header.add_history('Telluric corrected (no flux calibration -- no specphot standard given)')
 
-        # --- ERR: sigma, carrying the SCI spectral WCS ---
-        err_hdu = fits.ImageHDU(data=sigma.astype(np.float32), name='ERR')
+        # ERR: sigma, same WCS
+        err = fits.ImageHDU(data=np.asarray(sigma, np.float32), name='ERR')
         for k in ('CRVAL1', 'CDELT1', 'CRPIX1', 'CTYPE1', 'CUNIT1'):
             if k in sci.header:
-                err_hdu.header[k] = sci.header[k]
-        update_hdu(hdul, err_hdu)
+                err.header[k] = sci.header[k]
 
-        # --- WAVE ---
-        wave_hdu = fits.ImageHDU(data=np.asarray(wave, dtype=np.float64), name='WAVE')
+        # WAVE
+        wave_hdu = fits.ImageHDU(data=_wave, name='WAVE')
         if 'CUNIT1' in sci.header:
             wave_hdu.header['BUNIT'] = (sci.header['CUNIT1'], 'wavelength unit')
-        update_hdu(hdul, wave_hdu)
 
-        # --- SPECRES: evaluate resolution on this wavelength grid ---
-        if 'SPECRES' in [h.name for h in hdul]:
-            R = resolution_from_header(hdul['SPECRES'].header, wave).astype(np.float32)
-            res_hdu = fits.ImageHDU(data=R, name='SPECRES')
-            res_hdu.header['BUNIT'] = ('', 'Dimensionless R = lambda / FWHM')
-            res_hdu.header['SPRESQTY'] = ('R', 'Resolving power lambda/dlambda, per pixel')
-            for k in ('SPRESDEG', 'SPRESWLO', 'SPRESWHI', 'SPRESNFB'):
-                if k in hdul['SPECRES'].header:
-                    res_hdu.header[k] = hdul['SPECRES'].header[k]
-            # median poly coeffs in the header summary
-            for k in hdul['SPECRES'].header:
-                if k.startswith('SPRESC'):
-                    res_hdu.header[k] = hdul['SPECRES'].header[k]
-            update_hdu(hdul, res_hdu)
+        out = [pri, sci, err, wave_hdu]
 
-        # --- SPECRES_COEFF_PER_FIBER: per-fibre coeff stack ---
-        if 'SPECRES_COEFF_PER_FIBER' in names:
-            update_hdu(hdul, hdul['SPECRES_COEFF_PER_FIBER'].copy())
+        # SPECRES / SPECRESD: interpolate the template's resolution onto this wave grid
+        if 'SPECRES' in names and tpl_wave is not None:
+            R = np.interp(_wave, tpl_wave, np.asarray(tpl['SPECRES'].data, float)).astype(np.float32)
+            res = fits.ImageHDU(data=R, name='SPECRES')
+            res.header['BUNIT'] = ('', 'Dimensionless R = lambda / FWHM')
+            out.append(res)
+        if 'SPECRESD' in names and tpl_wave is not None:
+            Rd = np.interp(_wave, tpl_wave, np.asarray(tpl['SPECRESD'].data, float)).astype(np.float32)
+            out.append(fits.ImageHDU(data=Rd, name='SPECRESD'))
 
-        hdul.writeto(out_file, overwrite=True)
+        fits.HDUList(out).writeto(out_file, overwrite=True)
 
 
 def resolution_from_header(specres_header, wave):
