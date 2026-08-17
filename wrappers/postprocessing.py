@@ -360,8 +360,8 @@ def write_combined_outputs(combined, obs_date, throughput_file, plot=True):
     ssc_file = combined['exp']['ssc']['file']
     out_dir = processed_data_dir / obs_date
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_2d = out_dir / f'{obs_date}.reduced.postprocessed_2d.fits'
-    out_1d = out_dir / f'{obs_date}.reduced.postprocessed_1d.fits'
+    out_2d = out_dir / f'{obs_date}.reduced.postprocessed.fits'
+    out_1d = out_dir / f'{obs_date}.reduced.postprocessed_1d_spectrum.fits'
 
     # edge-clip the 1D to the same range as the 2D file before writing
     keep = clip_edges_mask(combined['wave'])
