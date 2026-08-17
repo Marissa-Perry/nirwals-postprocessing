@@ -3,14 +3,14 @@
 Postprocessing steps for reduced NIRWALS observations from SALT:
 - atmospheric absorption (telluric) correction
 - flux calibration
+- 1D spectra product
+    - selects on approximated half-light radius of IFU for each dithered exposure (if any) and averages across them.
 - 2D fiber data product
     - dithered observations (if any) are stacked as additional rows.
 - 3D data cube product
     - dithered observations (if any) are combined in this data product. 
     - originally developed by Antoine Mahoro and uses a Gaussian kernel/modified Shepard's-method.
     - Note: there is correlation among neighboring spaxels, so the spaxel errors should be treated as lower bounds.
-- 1D spectra product
-    - selects on approximated half-light radius of IFU for each dithered exposure (if any) and averages across them.
 
 ## Structure
 
