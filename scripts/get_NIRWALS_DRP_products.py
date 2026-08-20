@@ -187,8 +187,22 @@ def get_reduced_exposures(obs_date, suffixes=('ssc', 'cf', 'a'), root=pipeline_r
     exposures = {}
     primary_loaded = False
 
-    shared_keys = ('object', 'exptime', 'airmass', 'gain', 'grating_angle',
-                   'pupil_start', 'pupil_end', 'ra', 'dec', 'ngroups', 'cfw')
+    # subset of keys in the outer-most dict
+    # these are invariant across every reduction product (i.e., ssc, ss, cf, a) of a given exposure
+    shared_keys = (
+        'object',
+        'exp_type',
+        'exptime',
+        'airmass',
+        'gain',
+        'grating_angle',
+        'pupil_start',
+        'pupil_end',
+        'ra',
+        'dec',
+        'ngroups',
+        'cfw'
+    )
 
     def seed(exp_id, product):
         '''Record shared metadata the first time we see this exposure.'''
@@ -226,7 +240,8 @@ def get_reduced_exposures(obs_date, suffixes=('ssc', 'cf', 'a'), root=pipeline_r
     # sky exposures: 'object' names the corresponding target and needs updating
     for exp_id, exp in exposures.items():
         intermediate_data_products = [ext for ext in ('ssc', 'cf', 'a') if ext in exp]
-        # rename sky frame exposures from OBJECT to SKY
+        # rename sky frame exposures from OBJECT to SKY 
+        # identifying sky exposures based on whether they have a ssc intermediate data product
         if ('ssc' not in intermediate_data_products) and (exp['object'] != 'ARC'):
             exp['object'] = 'SKY'
 
@@ -315,14 +330,14 @@ def plot_science_reduction_results(obs_date, outdir=plot_ext_spectra_dir, smooth
 
         a = e['a']
         a_wave = np.asarray(a['wave'], dtype=float)
-        a_data = np.delete(np.asarray(a['flux'], dtype=float), sky_indices, axis=0)
+        a_data = np.delete(np.asarray(a['flux'], dtype=float), sky_indices, axis=0)  # remove sky fibers (248 --> 212 fibers)
         a_data_sigma = np.sqrt(variance_from_ivar(a['ivar'], sky_indices))
         a_mask = (np.delete(np.asarray(a['mask'], dtype=float), sky_indices, axis=0)
                   if a.get('mask') is not None else np.zeros_like(a_data))
 
         ssc_wave, ssc_data, ssc_data_sigma = get_reduced_spectra(e, exposures)
         cf_wave = np.asarray(e['cf']['wave'], dtype=float)
-        cf_data = np.delete(np.asarray(e['cf']['flux'], dtype=float), sky_indices, axis=0)
+        cf_data = np.asarray(e['cf']['flux'], dtype=float)
 
         # fiber axes must line up after sky removal
         assert a_data.shape[0] == ssc_data.shape[0] == cf_data.shape[0], \
