@@ -14,7 +14,7 @@ from matplotlib.patches import Circle
 from astropy.visualization import ImageNormalize, ZScaleInterval
 
 from . import cube_ifu
-from .misc_functions import data_dir, plot_dir
+from .get_NIRWALS_DRP_products import data_dir, plot_dir
 
 plot_dither_dir = plot_dir / 'combined_dithers'
 os.makedirs(plot_dither_dir, exist_ok=True)
