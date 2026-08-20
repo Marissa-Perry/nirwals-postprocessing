@@ -25,9 +25,13 @@ Postprocessing steps for reduced NIRWALS observations from SALT:
 Clone this repository, then create and activate the conda environment with all dependencies:
 
 ```bash
+git clone https://github.com/Marissa-Perry/nirwals-postprocessing.git
+cd nirwals-postprocessing
 conda env create -f nirwals_postprocessing_env.yml
 conda activate nirwals_postprocessing
 ```
+
+Make sure your NIRWALS DRP directory (`nirwals-pipeline`) is on the same level as this cloned repository (`nirwals-postprocessing`).
 
 ## Usage
 ```bash
