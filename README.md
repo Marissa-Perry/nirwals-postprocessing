@@ -14,9 +14,8 @@ Postprocessing steps for reduced NIRWALS observations from SALT:
 
 ## Structure
 
-- `YYYYMMDD/` - data directories (not tracked in git) containing data products from the NIRWALS DRP to be postprocessed
-- `data/` - NIRWALS IFU layout, dither-pattern setup, and standard spectrum for flux calibration
-- `functions/` - helper functions organized by each postprocessing step 
+- `data/` - NIRWALS IFU layout, dither-pattern setup, and standard spectra for flux calibration
+- `scripts/` - helper functions organized by each postprocessing step 
 - `outputs/` - diagnostic plots, throughput curves, and final data products
 - `wrappers/postprocessing.py` - script for running the postprocessing
 
@@ -32,6 +31,8 @@ conda activate nirwals_postprocessing
 ```
 
 Make sure your NIRWALS DRP directory (`nirwals-pipeline`) is on the same level as this cloned repository (`nirwals-postprocessing`).
+
+Be sure to download your data for flux calibration into `data/Rayner_standard_data/`.
 
 ## Usage
 ```bash

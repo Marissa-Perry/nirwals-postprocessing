@@ -6,8 +6,14 @@ __pycache__/
 # macOS
 .DS_Store
 
-# output throughput curves and figures
-outputs/
+# Ignore content in output directory but keep structure
+outputs/plots/*
+outputs/processed_data/*
+outputs/throughput_curves/*
+# .gitkeep allow Git to track empty directories
+!outputs/plots/.gitkeep
+!outputs/processed_data/.gitkeep 
+!outputs/throughput_curves/.gitkeep 
 
 # all Rayner standard data files
 #Rayner_standard_data/
