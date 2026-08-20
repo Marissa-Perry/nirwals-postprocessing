@@ -5,9 +5,7 @@ import os
 import sys
 from datetime import datetime
 
-from ..scripts.misc_functions import (get_reduced_exposures, get_reduced_spectra,
-                                 plot_science_reduction_results, plot_ext_spectra_dir,
-                                 load_fiber_map_dict)
+from ..scripts.get_NIRWALS_DRP_products import (get_reduced_exposures, get_reduced_spectra, plot_science_reduction_results, plot_ext_spectra_dir, load_fiber_map_dict)
 from ..scripts.telluric_correction import (query_star_properties, fit_telluric_star_model, fit_telluric_poly_model, apply_telluric_model, plot_star_telluric_model_fit, plot_poly_telluric_model_fit, plot_telluric_correction)
 from ..scripts.flux_calibration import (compute_throughput, save_throughput, flux_calibrate_exposure, write_fluxcal_fits, plot_throughput_fit, plot_throughput_validation, plot_flux_calibration, processed_data_dir)
 from ..scripts.dither_combine import (combine_dithers, write_combined_fits, plot_fiber_map, plot_cube_image, plot_coadded_spectrum, clip_edges_mask)
@@ -85,29 +83,42 @@ def identify_target_and_standard(exposures, exclude=('SKY', 'ARC')):
     """
     by_object = {}
     for e in exposures.values():
-        if e['object'] in exclude:
+
+        object_name = e['object']
+        exp_type = e['exp_type']
+
+        # First exclude ARC exposures
+        if object_name in exclude:
             continue
-        by_object.setdefault(e['object'], []).append(e)
+
+        # Exclude associated Sky frames (they use the same 'object' name as the target)
+        if exp_type != 'Science':
+            continue
+        by_object.setdefault(object_name, []).append(e)
 
     if len(by_object) == 0:
-        raise ValueError('No non-SKY/ARC exposures found on this night.')
+        raise ValueError('No non-ARC Science exposures found on this night.')
 
     if len(by_object) == 1:
         name = next(iter(by_object))
+
         return name, by_object[name], None, []
 
     if len(by_object) == 2:
         (n1, e1), (n2, e2) = sorted(by_object.items(), key=lambda kv: -len(kv[1]))
+
         if len(e1) == len(e2):
             raise ValueError(
-                f'Found two objects ({n1}, {n2}) with the same number of exposures on this '
-                'night -- cannot auto-identify which is the science target from exposure counts alone.'
+                f'Found two objects ({n1}, {n2}) with the same number of '
+                'Science exposures on this night -- cannot auto-identify '
+                'which is the science target from exposure counts alone.'
             )
+
         return n1, e1, n2, e2
 
     raise ValueError(
-        f'Found {len(by_object)} objects on this night ({sorted(by_object)}) -- '
-        'auto-identification only supports one or two.'
+        f'Found {len(by_object)} Science objects on this night '
+        f'({sorted(by_object)}) -- auto-identification only supports one or two.'
     )
 
 
@@ -147,6 +158,7 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
     star_props = query_star_properties(standard_name)
     wave, flux_all, sigma_all = get_reduced_spectra(standard_exp, standard_exposures)
     flux, sigma, ivar, gpm = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
+    gpm = gpm & clip_edges_mask(wave)   # trim detector edges (same clip applied to the final product for target)
 
     fit = fit_telluric_star_model(
         flux, wave, ivar, gpm, star_props,
@@ -165,6 +177,7 @@ def fit_telluric_poly(target_exp, target_exposures, polyorder=3, disp=False, plo
     """
     wave, flux_all, sigma_all = get_reduced_spectra(target_exp, target_exposures)
     flux, sigma, ivar, gpm = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
+    gpm = gpm & clip_edges_mask(wave)   # trim detector edges (same clip applied to the final product for target)
 
     fit = fit_telluric_poly_model(
         flux, wave, ivar, gpm,
@@ -210,6 +223,19 @@ def resolve_telluric_correction(args, obs_date_exposures, target_name, sci_expos
             f'grating angle {round(sci_exposures[0]["grating_angle"], 1)}.'
         )
     standard_exp = matches[0]
+    print()
+    print('----------')
+    print('TELLURIC STANDARD')
+    print()
+    for i, match in enumerate(matches):
+
+        print(f'matches[{i}] file:', match['a']['filename'])
+        print(f'matches[{i}] EXPTYPE:', match['a']['exp_type'])
+        print(f'matches[{i}] EXPTIME:', match['a']['exptime'])
+        print()
+    print()
+    print('----------')
+    print()
 
     print(f'\n\nTelluric correction: fitting standard {standard_name} ({args.telluric_standard_date}) with PypeIt star model', end='\n\n')
     return fit_telluric_star(standard_exp, standard_name, tell_exposures, polyorder=args.telluric_standard_polyorder, obs_date=args.obs_date)
@@ -241,7 +267,19 @@ def get_throughput_file(sci_exposures, args, plot=True):
             f'No {specphot_name} exposure on {args.specphot_date} matches the science grating angle '
             f'{round(sci_exposures[0]["grating_angle"], 1)}.'
         )
-    specphot_exp = matches[0]
+    specphot_exp = matches[-1]
+    print()
+    print('----------')
+    print('SPEC-PHOT')
+    for i, match in enumerate(matches):
+
+        print(f'matches[{i}] file:', match['a']['filename'])
+        print(f'matches[{i}] EXPTYPE:', match['a']['exp_type'])
+        print(f'matches[{i}] EXPTIME:', match['a']['exptime'])
+        print()
+    print()
+    print('----------')
+    print()
 
     print(f'\n\nFlux calibration: self-correcting spec-phot standard {specphot_name} ({args.specphot_date}) '
           'with PypeIt poly model, then computing throughput', end='\n\n')
