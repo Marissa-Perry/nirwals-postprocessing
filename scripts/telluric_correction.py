@@ -196,7 +196,7 @@ def fit_telluric_star_model(star_flux, star_wave, star_ivar, star_gpm, star_prop
 
 
 def fit_telluric_poly_model(star_flux, star_wave, star_ivar, star_gpm, airmass, exptime,
-                            telgridfile=TELLPCA_FILE, resln_guess=4000., polyorder=3, sn_clip=30.0, maxiter=3,
+                            telgridfile=TELLPCA_FILE, resln_guess=4000., polyorder=5, sn_clip=30.0, maxiter=3,
                             pix_shift_bounds=(-10.0, 10.0), pix_stretch_bounds=(0.95, 1.05), func='legendre', 
                             model='exp', z_obj=0.0, mask_lyman_a=False, mask_hydrogen=True, hydrogen_mask_wid=20., disp=False):
     '''
