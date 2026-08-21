@@ -58,7 +58,7 @@ def plot_reduced_1D_spectra(obs_date):
     notebook's plot_science_reduction_results() step, run at the start of
     the reduction.
 
-    Skipped if outputs/plots/NIRWALS_DRP_reduced_1D_spectra/<obs_date>/ already
+    Skipped if outputs/plots/NIRWALS_DRP_reduced_spectra/<obs_date>/ already
     exists, so re-running the reduction doesn't overwrite existing plots.
     """
     date_dir = os.path.join(plot_ext_spectra_dir, obs_date)
@@ -399,7 +399,7 @@ def write_combined_outputs(combined, obs_date, throughput_file, plot=True):
     out_dir = processed_data_dir / obs_date
     out_dir.mkdir(parents=True, exist_ok=True)
     out_2d = out_dir / f'{obs_date}.reduced.postprocessed.fits'
-    out_1d = out_dir / f'{obs_date}.reduced.postprocessed_1d_spectrum.fits'
+    out_1d = out_dir / f'{obs_date}.reduced.postprocessed_1Dspec.fits'
 
     # edge-clip the 1D to the same range as the 2D file before writing
     keep = clip_edges_mask(combined['wave'])
