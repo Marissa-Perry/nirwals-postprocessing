@@ -284,13 +284,12 @@ def get_reduced_spectra(sci_exp, all_exp):
     sky_idx = fmap['sky_indices']
 
     ssc = sci_exp['ssc']
-    wave = np.asarray(ssc['wave'], dtype=float)
-    flux_all = np.asarray(ssc['flux'], dtype=float)
+    wave = ssc['wave']
+    flux_all = ssc['flux']
 
     # object variance from the 'a' product, interpolated onto the ssc grid
     a = sci_exp['a']
-    var_obj = interp1d(np.asarray(a['wave'], float), variance_from_ivar(a['ivar'], sky_idx),
-                       axis=1, bounds_error=False, fill_value=np.nan)(wave)
+    var_obj = interp1d(np.asarray(a['wave'], float), variance_from_ivar(a['ivar'], sky_idx), axis=1, bounds_error=False, fill_value=np.nan)(wave)
 
     # keep flux on the same (object) fibers as the variance
     if flux_all.shape[0] != var_obj.shape[0]:
@@ -300,8 +299,7 @@ def get_reduced_spectra(sci_exp, all_exp):
     sky_exp = find_matching_sky(sci_exp, all_exp)
     if sky_exp is not None:
         sa = sky_exp['a']
-        var_sky = interp1d(np.asarray(sa['wave'], float), variance_from_ivar(sa['ivar'], sky_idx),
-                           axis=1, bounds_error=False, fill_value=np.nan)(wave)
+        var_sky = interp1d(np.asarray(sa['wave'], float), variance_from_ivar(sa['ivar'], sky_idx), axis=1, bounds_error=False, fill_value=np.nan)(wave)
         total_var = var_obj + var_sky   # sky subtraction adds sky Poisson noise
 
     return wave, flux_all, np.sqrt(total_var)

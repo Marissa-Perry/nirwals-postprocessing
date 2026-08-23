@@ -99,13 +99,15 @@ def identify_target_and_standard(exposures, exclude=('SKY', 'ARC')):
     if len(by_object) == 0:
         raise ValueError('No non-ARC Science exposures found on this night.')
 
+    # only one science observation
     if len(by_object) == 1:
         name = next(iter(by_object))
 
         return name, by_object[name], None, []
 
+    # science + standard star observation
     if len(by_object) == 2:
-        (n1, e1), (n2, e2) = sorted(by_object.items(), key=lambda kv: -len(kv[1]))
+        (n1, e1), (n2, e2) = sorted(by_object.items(), key=lambda kv: -len(kv[1]))  # science target should have longest exposure time
 
         if len(e1) == len(e2):
             raise ValueError(
