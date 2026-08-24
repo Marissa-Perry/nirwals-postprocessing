@@ -388,23 +388,3 @@ def plot_science_reduction_results(obs_date, outdir=plot_ext_spectra_dir, smooth
                 plt.show()
             else:
                 plt.close()
-
-
-def compute_resolution_percentiles(coeffs, hdr, wave):
-    coeffs = np.atleast_2d(np.asarray(coeffs, float))  # (n_fibres, deg+1)
-    wave = np.asarray(wave, float)
-    # lo, hi = hdr['SPRESWLO'], hdr['SPRESWHI']
-
-    fwhm = np.vstack([np.polyval(c, wave) for c in coeffs])
-    R = wave[None, :] / fwhm
-    # R[:, (wave < lo) | (wave > hi)] = np.nan
-    R[fwhm <= 0] = np.nan
-
-    R_med = np.nanmedian(R, axis=0)
-    R_16 = np.nanpercentile(R, 16, axis=0)
-    R_84 = np.nanpercentile(R, 84, axis=0)
-    for row in (R_med, R_16, R_84):
-        g = np.isfinite(row)
-        if g.any() and not g.all():
-            row[~g] = np.interp(wave[~g], wave[g], row[g])
-    return R_med, R_16, R_84
