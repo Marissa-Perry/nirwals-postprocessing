@@ -7,8 +7,9 @@ from datetime import datetime
 
 from ..scripts.get_NIRWALS_DRP_products import (get_reduced_exposures, get_reduced_spectra, plot_science_reduction_results, plot_ext_spectra_dir, load_fiber_map_dict)
 from ..scripts.telluric_correction import (query_star_properties, fit_telluric_star_model, fit_telluric_poly_model, apply_telluric_model, plot_star_telluric_model_fit, plot_poly_telluric_model_fit, plot_telluric_correction)
-from ..scripts.flux_calibration import (compute_throughput, save_throughput, flux_calibrate_exposure, write_fluxcal_fits, plot_throughput_fit, plot_throughput_validation, plot_flux_calibration, processed_data_dir)
-from ..scripts.dither_combine import (combine_dithers, write_combined_fits, plot_fiber_map, plot_cube_image, plot_coadded_spectrum, clip_edges_mask)
+from ..scripts.flux_calibration import (compute_throughput, save_throughput, flux_calibrate_exposure, plot_throughput_fit, plot_throughput_validation, plot_flux_calibration, processed_data_dir)
+from ..scripts.dither_combine import (combine_dithers, plot_fiber_map, plot_cube_image, plot_coadded_spectrum, clip_edges_mask)
+from ..scripts.data_products import write_postprocessed_fits, write_1d_fits
 from ..scripts.fiber_coadd import (select_bright_fibers, coadd_fibers, half_light_radius_rough_estimate, coadd_fibers_averaged)
 from ..scripts.bitmask import (MASK_BADPIX, MASK_SKYLINE, MASK_LOWTELL, MASK_DONOTUSE, DONOTUSE_BITS, TELL_MIN, SKY_NSIG)
 
@@ -418,26 +419,16 @@ def write_combined_outputs(combined, obs_date, throughput_file, plot=True):
     out_2d = out_dir / f'{obs_date}.reduced.postprocessed.fits'
     out_1d = out_dir / f'{obs_date}.reduced.postprocessed_1Dspec.fits'
 
-    # edge-clip the 1D to the same range as the 2D file before writing
+    # 2D product (row-stacked spectra + cube)
+    write_postprocessed_fits(combined, str(out_2d), throughput_file=throughput_file)
+
+    # 1D co-add: bitmask collapsed over fibers (writer zeros IVAR at DONOTUSE)
     keep = clip_edges_mask(combined['wave'])
-    write_combined_fits(combined, str(out_2d), throughput_file=throughput_file)
-
-    # setting ivar=0 for DONOTUSE in 1D spec
     wl_bits = (np.bitwise_or.reduce(combined['mask_all'].astype(np.int32), axis=0)
-               if combined.get('mask_all') is not None
-               else np.zeros(combined['wave'].shape, dtype=np.int32))
-    
-    donotuse = (wl_bits & MASK_DONOTUSE) != 0
-
-    flux_out = flux_1d       # unmasked
-    sigma_out = sigma_1d.copy()
-    sigma_out[donotuse] = np.inf  # ivar=0 for DONOTUSE pixels
-
-    wl_bits = np.bitwise_or.reduce(combined['mask_all'].astype(np.int32), axis=0)
-    write_fluxcal_fits(template_file=ssc_file, wave=combined['wave'][keep],
-                    flux=flux_1d[keep], sigma=sigma_1d[keep],
-                    out_file=str(out_1d), throughput_file=throughput_file,
-                    mask=wl_bits[keep])
+               if combined.get('mask_all') is not None else np.zeros(combined['wave'].shape, np.int32))
+    write_1d_fits(template_file=ssc_file, wave=combined['wave'][keep],
+                  flux=flux_1d[keep], sigma=sigma_1d[keep],
+                  out_file=str(out_1d), throughput_file=throughput_file, mask=wl_bits[keep])
 
     print(f'\n\nwrote {out_2d}')
     print(f'wrote {out_1d}', end='\n\n')

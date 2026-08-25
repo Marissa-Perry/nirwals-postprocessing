@@ -1,7 +1,3 @@
-"""
-NIRWALS DRP pixel bitmask (NIRWALS_DRP_PIXELMASK).
-"""
-
 MASKBITS = {
     'BADPIX':      (1, 'pixel flagged in the reduced bad-pixel mask'),
     'SKYLINE':     (2, 'strong OH sky line (informational; elevated sky shot noise)'),

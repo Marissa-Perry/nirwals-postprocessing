@@ -6,6 +6,8 @@ Combines one or more exposures into a single datacube.
 import os
 import numpy as np
 import pandas as pd
+
+from ..scripts.bitmask import MASK_DONOTUSE
 from astropy.io import fits
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -15,7 +17,6 @@ from astropy.visualization import ImageNormalize, ZScaleInterval
 
 from . import cube_ifu
 from .get_NIRWALS_DRP_products import data_dir, plot_dir
-from ..scripts.bitmask import (MASK_DONOTUSE, write_maskbits_header)
 
 plot_dither_dir = plot_dir / 'combined_dithers'
 os.makedirs(plot_dither_dir, exist_ok=True)
@@ -208,134 +209,6 @@ def coadd_cube_region(combined, center, reff):
     var[good] = 1.0 / ivar_cube[good]
     sigma = np.sqrt(np.nansum(var[:, mask], axis=1))
     return flux, sigma, int(mask.sum())
-
-
-def write_combined_fits(combined, out_file, throughput_file=None):
-    """
-    Write the combined 2D fiber data product as a multi-extension FITS, MaNGA-style:
-
-      0  PRIMARY   (empty; global header only)
-      1  FLUX      stacked per-fiber spectra                 [NFIBER*NEXP, NWAVE]
-      2  IVAR      inverse variance of FLUX                  [NFIBER*NEXP, NWAVE]
-      3  MASK      bad-pixel mask (1 = bad, gpcnt == 0)      [NFIBER*NEXP, NWAVE]
-      4  WAVE      wavelength vector                         [NWAVE]
-      5  SPECRES   median spectral resolution R vs wave      [NWAVE]
-      6  SPECRESD  1-sigma scatter of R across fibers        [NWAVE]
-      7  OBSINFO   binary table, one row per exposure combined
-      8  XPOS      fiber X positions (arcsec, IFU centre)    [NFIBER*NEXP]
-      9  YPOS      fiber Y positions (arcsec, IFU centre)    [NFIBER*NEXP]
-     10  SKYCORR   sky-correction term (cs - ss)             [NFIBER*NEXP, NWAVE]
-     11  TELLCORR  telluric transmission applied             [NWAVE]
-     12  FLUXCAL   flux-calibration throughput curve         [NWAVE]
-     13  CUBE      Shepard-reconstructed datacube            [NWAVE, NY, NX]
-     14  CUBE_IVAR inverse variance of CUBE                  [NWAVE, NY, NX]
-
-    Each wavelength-axis array is edge-clipped to the useful range. Extensions
-    whose data isn't present in `combined` are skipped (relative order preserved).
-    """
-    ref_header = combined['exp']['ssc']['sci_header']
-    bunit = 'erg/s/cm2/A' if throughput_file else 'counts/s'
-
-    keep = clip_edges_mask(combined['wave'])
-    if not keep.any():
-        raise ValueError(f'edge clip [{CLIP_WAVE_BLUE_RANGE}, {CLIP_WAVE_RED_RANGE}] A keeps no wavelengths')
-    i0 = int(np.argmax(keep))
-    wave = combined['wave'][keep]
-
-    def stamp(hdu, desc, unit=None):
-        if unit is not None:
-            hdu.header['BUNIT'] = unit
-        hdu.header['EXTDESC'] = (desc, 'extension contents')
-        return hdu
-
-    # --- 0 PRIMARY: empty, global header only ---
-    pri = fits.PrimaryHDU()
-    pri.header['OBJECT'] = (ref_header.get('OBJECT', combined['exp'].get('object', '')), 'science target')
-    pri.header['NDITHER'] = (combined.get('n_dither', 1), 'number of combined dithered exposures')
-    pri.header['NWAVE'] = (int(keep.sum()), 'number of wavelength pixels')
-    pri.header['NFIBER'] = (int(combined['flux_all'].shape[0]), 'total fiber rows (NFIBER_PER_EXP * NEXP)')
-    pri.header.add_history(f'Edge-clipped: {CLIP_WAVE_BLUE_RANGE:.0f} A blue, {CLIP_WAVE_RED_RANGE:.0f} A red')
-    pri.header.add_history('Primary product: per-fiber spectra (telluric-corrected'
-                           + (', flux-calibrated)' if throughput_file else ')'))
-    hdus = [pri]
-
-    # --- 1 FLUX (carries the spectral WCS on the wavelength axis) ---
-    flux_hdu = fits.ImageHDU(combined['flux_all'][:, keep].astype(np.float32), name='FLUX')
-    for k in ('CTYPE1', 'CRVAL1', 'CRPIX1', 'CDELT1', 'CUNIT1'):
-        if k in ref_header:
-            flux_hdu.header[k] = ref_header[k]
-    if 'CRPIX1' in flux_hdu.header:
-        flux_hdu.header['CRPIX1'] = flux_hdu.header['CRPIX1'] - i0
-    hdus.append(stamp(flux_hdu, 'row-stacked fiber spectra in units of ergs/s/cm^2/A^-1', bunit))
-
-    # --- 2 IVAR ---
-        # --- 2 IVAR ---
-    sigma = combined['sigma_all'][:, keep]
-    gp = np.isfinite(sigma) & (sigma > 0)
-    fiber_ivar = np.zeros_like(sigma)
-    fiber_ivar[gp] = 1.0 / sigma[gp] ** 2
-    if combined.get('mask_all') is not None: 
-        fiber_ivar[(combined['mask_all'][:, keep] & MASK_DONOTUSE) != 0] = 0.0
-    hdus.append(stamp(fits.ImageHDU(fiber_ivar.astype(np.float32), name='IVAR'), 'inverse variance of FLUX', f'({bunit})^-2'))
-
-    # --- 3 MASK: quality bitmask (NIRWALS_DRP_PIXELMASK) ---
-    if combined.get('mask_all') is not None:
-        mask_hdu = stamp(fits.ImageHDU(combined['mask_all'][:, keep].astype(np.int32), name='MASK'), 'quality bitmask (NIRWALS_DRP_PIXELMASK)')
-        write_maskbits_header(mask_hdu.header)
-        hdus.append(mask_hdu)
-
-    # --- 4 WAVE ---
-    wave_hdu = stamp(fits.ImageHDU(wave.astype(np.float64), name='WAVE'), 'wavelength vector in units of A', ref_header.get('CUNIT1', 'Angstrom'))
-    hdus.append(wave_hdu)
-
-    # --- 5 SPECRES / 6 SPECRESD ---
-    if combined.get('specres') is not None:
-        hdus.append(stamp(fits.ImageHDU(np.asarray(combined['specres'])[keep].astype(np.float32), name='SPECRES'), 'median spectral resolution (R)'))
-    if combined.get('specresd') is not None:
-        hdus.append(stamp(fits.ImageHDU(np.asarray(combined['specresd'])[keep].astype(np.float32), name='SPECRESD'), 'standard deviation (1-sigma) of SPECRES'))
-
-    # --- 7 OBSINFO ---
-    if combined.get('obsinfo'):
-        rows = combined['obsinfo']; keys = list(rows[0].keys())
-        def col(k):
-            vals = [r[k] for r in rows]
-            if all(isinstance(v, str) for v in vals):
-                return fits.Column(name=k.upper(), format=f'{max(len(v) for v in vals)}A', array=np.array(vals))
-            return fits.Column(name=k.upper(), format='E', array=np.array(vals, dtype=float))
-        obs_hdu = fits.BinTableHDU.from_columns([col(k) for k in keys], name='OBSINFO')
-        obs_hdu.header['EXTDESC'] = ('per-exposure metadata (one row per exposure)', 'extension contents')
-        hdus.append(obs_hdu)
-
-    # --- 8 XPOS / 9 YPOS (one value per fiber row) ---
-    hdus.append(stamp(fits.ImageHDU(combined['x_arcsec'].astype(np.float32), name='XPOS'), 'fiber X-position relative to IFU center', 'arcsec'))
-    hdus.append(stamp(fits.ImageHDU(combined['y_arcsec'].astype(np.float32), name='YPOS'), 'fiber Y-position relative to IFU center', 'arcsec'))
-
-    # --- 10 SKYCORR ---
-    if combined.get('skycorr') is not None:
-        hdus.append(stamp(fits.ImageHDU(combined['skycorr'][:, keep].astype(np.float32), name='SKYCORR'), 'subtracted sky emission', bunit))
-
-    # --- 11 TELLCORR ---
-    if combined.get('tellcorr') is not None:
-        hdus.append(stamp(fits.ImageHDU(np.asarray(combined['tellcorr'])[keep].astype(np.float32), name='TELLCORR'), 'telluric transmission correction'))
-
-    # --- 12 FLUXCAL (throughput curve, interpolated onto WAVE) ---
-    if throughput_file is not None:
-        try:
-            t = pd.read_csv(throughput_file)
-            tw, tt = t.iloc[:, 0].values, t.iloc[:, 1].values
-            thru = np.interp(wave, tw, tt, left=np.nan, right=np.nan).astype(np.float32)
-            hdus.append(stamp(fits.ImageHDU(thru, name='FLUXCAL'), 'flux-calibration throughput curve'))
-        except Exception as e:
-            print(f'  FLUXCAL: could not read throughput {throughput_file} ({e})')
-
-    # --- 13 CUBE / 14 CUBE_IVAR ---
-    cube_hdu = fits.ImageHDU(combined['cube'][keep].astype(np.float32), name='CUBE')
-    cube_hdu.header['EXTDESC'] = ('3d data cube (all exposures combined)', 'extension contents')
-    cube_hdu.header['BUNIT'] = bunit
-    hdus.append(cube_hdu)
-    hdus.append(stamp(fits.ImageHDU(combined['ivar_cube'][keep].astype(np.float32), name='CUBE_IVAR'), 'inverse variance of CUBE', f'({bunit})^-2'))
-
-    fits.HDUList(hdus).writeto(out_file, overwrite=True)
 
 
 def plot_fiber_map(combined, obs_date, savepath=plot_dither_dir, show=True, aperture_info=None):

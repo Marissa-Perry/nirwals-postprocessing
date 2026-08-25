@@ -8,7 +8,6 @@ import glob
 import os
 
 from .fiber_coadd import select_bright_fibers
-from .bitmask import MASK_DONOTUSE, write_maskbits_header
 
 # -------- filepath params ----------
 this_dir = Path(__file__).resolve().parent     # .../post_reduction_processing/scripts
@@ -276,101 +275,12 @@ def flux_calibrate_exposure(wave, flux, sigma, exp, throughput_file, fibfil=0.62
                              cdelt1=cdelt1, fibfil=fibfil)
     return F, Ferr
 
-def write_fluxcal_fits(template_file, wave, flux, sigma, out_file, throughput_file, mask=None):
-    '''
-    Write a flux-calibrated 1D/2D spectrum
-
-    If `mask` (the 1D quality bitmask) is given, it is written as a MASK extension
-    matching the 2D product, and IVAR is set to 0 wherever the DONOTUSE bit is set
-    '''
-    _wave = np.asarray(wave, dtype=np.float64)
-    with fits.open(template_file) as tpl:
-        names = [h.name for h in tpl]
-        flux_hdu = tpl['FLUX'] if 'FLUX' in names else tpl['SCI']              # template flux ext (WCS source)
-        meta = tpl['OBSINFO'].header if 'OBSINFO' in names else tpl['PRIMARY'].header
-        tpl_wave = np.asarray(tpl['WAVE'].data, float) if 'WAVE' in names else None
-
-        # PRIMARY: carry the observation metadata (kept here so downstream readers find it)
-        pri = fits.PrimaryHDU()
-        pri.header.extend(meta, strip=True, update=True)
-        for k in ('EXTNAME', 'EXTVER', 'EXTDESC'):
-            pri.header.remove(k, ignore_missing=True)   # don't inherit the OBSINFO extension's name
-
-        # FLUX: flux, with a linear wavelength WCS matching `wave` (named FLUX to
-        # match the 2D product; 'sci' is just the local handle for its WCS header)
-        sci = fits.ImageHDU(data=np.asarray(flux, np.float32), name='FLUX')
-        for k in ('CTYPE1', 'CUNIT1'):
-            if k in flux_hdu.header:
-                sci.header[k] = flux_hdu.header[k]
-        sci.header['CRPIX1'] = 1.0
-        sci.header['CRVAL1'] = float(_wave[0])
-        sci.header['CDELT1'] = float(_wave[1] - _wave[0])
-        sci.header.add_history('Telluric corrected and flux calibrated' if throughput_file is not None
-                               else 'Telluric corrected (no flux calibration -- no specphot standard given)')
-        if throughput_file is not None:
-            sci.header.add_history(f'Flux calibration throughput: {os.path.basename(throughput_file)}')
-
-        # IVAR: inverse variance
-        # Zero wherever sigma is non-finite/<=0, and additionally at DONOTUSE, so
-        # flagged pixels carry zero weight while FLUX itself is left untouched.
-        sigma_arr = np.asarray(sigma, dtype=float)
-        ivar_data = np.zeros_like(sigma_arr, dtype=np.float32)
-        gp = np.isfinite(sigma_arr) & (sigma_arr > 0)
-        ivar_data[gp] = 1.0 / sigma_arr[gp] ** 2
-        if mask is not None:
-            ivar_data[(np.asarray(mask, np.int32) & MASK_DONOTUSE) != 0] = 0.0
-        err = fits.ImageHDU(data=ivar_data, name='IVAR')
-        for k in ('CRVAL1', 'CDELT1', 'CRPIX1', 'CTYPE1', 'CUNIT1'):
-            if k in sci.header:
-                err.header[k] = sci.header[k]
-        if 'CUNIT1' in flux_hdu.header:                       # BUNIT = (flux unit)^-2
-            err.header['BUNIT'] = (f"({flux_hdu.header['CUNIT1']})^-2", 'inverse variance unit')
-
-        # WAVE
-        wave_hdu = fits.ImageHDU(data=_wave, name='WAVE')
-        if 'CUNIT1' in sci.header:
-            wave_hdu.header['BUNIT'] = (sci.header['CUNIT1'], 'wavelength unit')
-
-        # MASK: quality bitmask, same definitions as the 2D product
-        mask_hdu = None
-        if mask is not None:
-            mask_hdu = fits.ImageHDU(data=np.asarray(mask, np.int32), name='MASK')
-            for k in ('CRVAL1', 'CDELT1', 'CRPIX1', 'CTYPE1', 'CUNIT1'):
-                if k in sci.header:
-                    mask_hdu.header[k] = sci.header[k]
-            mask_hdu.header['EXTDESC'] = ('quality bitmask (NIRWALS_DRP_PIXELMASK)', 'extension contents')
-            write_maskbits_header(mask_hdu.header)
-
-        out = [pri, sci, err, wave_hdu]
-        if mask_hdu is not None:
-            out.insert(3, mask_hdu)          # order: PRIMARY, FLUX, IVAR, MASK, WAVE, ...
-
-        # SPECRES / SPECRESD: interpolate the template's resolution onto this wave grid
-        if 'SPECRES' in names and tpl_wave is not None:
-            R = np.interp(_wave, tpl_wave, np.asarray(tpl['SPECRES'].data, float)).astype(np.float32)
-            res = fits.ImageHDU(data=R, name='SPECRES')
-            res.header['BUNIT'] = ('', 'Dimensionless R = lambda / FWHM')
-            out.append(res)
-        if 'SPECRESD' in names and tpl_wave is not None:
-            Rd = np.interp(_wave, tpl_wave, np.asarray(tpl['SPECRESD'].data, float)).astype(np.float32)
-            out.append(fits.ImageHDU(data=Rd, name='SPECRESD'))
-
-        fits.HDUList(out).writeto(out_file, overwrite=True)
-
-
 def resolution_from_header(specres_header, wave):
     deg = specres_header['SPRESDEG']
     coeff = [specres_header[f'SPRESC{p}'] for p in range(deg, -1, -1)]  # highest-order first
     wave = np.asarray(wave, dtype=float)
     fwhm = np.polyval(coeff, wave)
     R = wave / fwhm
-    # lo, hi = specres_header['SPRESWLO'], specres_header['SPRESWHI']
-    # wavelengths outside of the arc exposure's wavelength coverage
-    # bad = (wave < lo) | (wave > hi) | (fwhm <= 0)
-    # good = ~bad
-    # # interpolate over those regions
-    # if good.any() and bad.any():
-    #     R[bad] = np.interp(wave[bad], wave[good], R[good])
     return R
 
 
