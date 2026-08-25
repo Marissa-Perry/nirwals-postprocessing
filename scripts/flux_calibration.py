@@ -8,6 +8,7 @@ import glob
 import os
 
 from .fiber_coadd import select_bright_fibers
+from .bitmask import MASK_DONOTUSE, write_maskbits_header
 
 # -------- filepath params ----------
 this_dir = Path(__file__).resolve().parent     # .../post_reduction_processing/scripts
@@ -275,12 +276,16 @@ def flux_calibrate_exposure(wave, flux, sigma, exp, throughput_file, fibfil=0.62
                              cdelt1=cdelt1, fibfil=fibfil)
     return F, Ferr
 
-def write_fluxcal_fits(template_file, wave, flux, sigma, out_file, throughput_file):
+def write_fluxcal_fits(template_file, wave, flux, sigma, out_file, throughput_file, mask=None):
     '''
     Write a flux-calibrated 1D/2D spectrum as: PRIMARY (obs metadata) + SCI (flux),
     ERR (sigma), WAVE, SPECRES, SPECRESD. Metadata and resolution are taken from the
     reduced template (new MaNGA-style products carry an OBSINFO extension and FLUX
     instead of SCI); the output keeps the SCI/ERR layout the 1D readers expect.
+
+    If `mask` (the 1D quality bitmask) is given, it is written as a MASK extension
+    matching the 2D product, and ERR is set to inf (i.e. IVAR = 0) wherever the
+    DONOTUSE bit is set.
     '''
     _wave = np.asarray(wave, dtype=np.float64)
     with fits.open(template_file) as tpl:
@@ -308,8 +313,12 @@ def write_fluxcal_fits(template_file, wave, flux, sigma, out_file, throughput_fi
         if throughput_file is not None:
             sci.header.add_history(f'Flux calibration throughput: {os.path.basename(throughput_file)}')
 
-        # ERR: sigma, same WCS
-        err = fits.ImageHDU(data=np.asarray(sigma, np.float32), name='ERR')
+        # ERR: sigma, same WCS. Zero the weight (ERR -> inf, i.e. IVAR = 0) wherever
+        # DONOTUSE is set, matching the 2D IVAR; FLUX itself is left untouched.
+        err_data = np.asarray(sigma, np.float32).copy()
+        if mask is not None:
+            err_data[(np.asarray(mask, np.int32) & MASK_DONOTUSE) != 0] = np.inf
+        err = fits.ImageHDU(data=err_data, name='ERR')
         for k in ('CRVAL1', 'CDELT1', 'CRPIX1', 'CTYPE1', 'CUNIT1'):
             if k in sci.header:
                 err.header[k] = sci.header[k]
@@ -319,7 +328,19 @@ def write_fluxcal_fits(template_file, wave, flux, sigma, out_file, throughput_fi
         if 'CUNIT1' in sci.header:
             wave_hdu.header['BUNIT'] = (sci.header['CUNIT1'], 'wavelength unit')
 
+        # MASK: quality bitmask, same definitions as the 2D product
+        mask_hdu = None
+        if mask is not None:
+            mask_hdu = fits.ImageHDU(data=np.asarray(mask, np.int32), name='MASK')
+            for k in ('CRVAL1', 'CDELT1', 'CRPIX1', 'CTYPE1', 'CUNIT1'):
+                if k in sci.header:
+                    mask_hdu.header[k] = sci.header[k]
+            mask_hdu.header['EXTDESC'] = ('quality bitmask (NIRWALS_DRP_PIXELMASK)', 'extension contents')
+            write_maskbits_header(mask_hdu.header)
+
         out = [pri, sci, err, wave_hdu]
+        if mask_hdu is not None:
+            out.insert(3, mask_hdu)  # order: PRIMARY, SCI, ERR, MASK, WAVE, ...
 
         # SPECRES / SPECRESD: interpolate the template's resolution onto this wave grid
         if 'SPECRES' in names and tpl_wave is not None:

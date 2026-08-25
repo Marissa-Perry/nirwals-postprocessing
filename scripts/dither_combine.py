@@ -15,6 +15,7 @@ from astropy.visualization import ImageNormalize, ZScaleInterval
 
 from . import cube_ifu
 from .get_NIRWALS_DRP_products import data_dir, plot_dir
+from ..scripts.bitmask import (MASK_DONOTUSE, write_maskbits_header)
 
 plot_dither_dir = plot_dir / 'combined_dithers'
 os.makedirs(plot_dither_dir, exist_ok=True)
@@ -137,6 +138,8 @@ def combine_dithers(per_exposure_results, astrometry_file=ASTROMETRY_FILE, offse
     gpm = np.isfinite(sigma_all) & (sigma_all > 0)
     ivar_all = np.zeros_like(sigma_all)
     ivar_all[gpm] = 1.0 / sigma_all[gpm] ** 2
+    # zero IVAR wherever DONOTUSE is set
+    ivar_all[(mask_all & MASK_DONOTUSE) != 0] = 0.0 
 
     (cube, ivar_cube), _ = cube_ifu.ifu_to_grid(
         flux_all, core_x_pixels, core_y_pixels, core_diam_pixels,
@@ -266,15 +269,20 @@ def write_combined_fits(combined, out_file, throughput_file=None):
     hdus.append(stamp(flux_hdu, 'row-stacked fiber spectra in units of ergs/s/cm^2/A^-1', bunit))
 
     # --- 2 IVAR ---
+        # --- 2 IVAR ---
     sigma = combined['sigma_all'][:, keep]
-    fiber_ivar = np.zeros_like(sigma)
     gp = np.isfinite(sigma) & (sigma > 0)
+    fiber_ivar = np.zeros_like(sigma)
     fiber_ivar[gp] = 1.0 / sigma[gp] ** 2
+    if combined.get('mask_all') is not None: 
+        fiber_ivar[(combined['mask_all'][:, keep] & MASK_DONOTUSE) != 0] = 0.0
     hdus.append(stamp(fits.ImageHDU(fiber_ivar.astype(np.float32), name='IVAR'), 'inverse variance of FLUX', f'({bunit})^-2'))
 
-    # --- 3 MASK (1 = bad; from gpcnt == 0) ---
+    # --- 3 MASK: quality bitmask (NIRWALS_DRP_PIXELMASK) ---
     if combined.get('mask_all') is not None:
-        hdus.append(stamp(fits.ImageHDU(combined['mask_all'][:, keep].astype(np.int16), name='MASK'), 'bad-pixel mask (1 = bad)'))
+        mask_hdu = stamp(fits.ImageHDU(combined['mask_all'][:, keep].astype(np.int32), name='MASK'), 'quality bitmask (NIRWALS_DRP_PIXELMASK)')
+        write_maskbits_header(mask_hdu.header)
+        hdus.append(mask_hdu)
 
     # --- 4 WAVE ---
     wave_hdu = stamp(fits.ImageHDU(wave.astype(np.float64), name='WAVE'), 'wavelength vector in units of A', ref_header.get('CUNIT1', 'Angstrom'))

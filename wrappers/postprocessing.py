@@ -10,6 +10,7 @@ from ..scripts.telluric_correction import (query_star_properties, fit_telluric_s
 from ..scripts.flux_calibration import (compute_throughput, save_throughput, flux_calibrate_exposure, write_fluxcal_fits, plot_throughput_fit, plot_throughput_validation, plot_flux_calibration, processed_data_dir)
 from ..scripts.dither_combine import (combine_dithers, write_combined_fits, plot_fiber_map, plot_cube_image, plot_coadded_spectrum, clip_edges_mask)
 from ..scripts.fiber_coadd import (select_bright_fibers, coadd_fibers, half_light_radius_rough_estimate, coadd_fibers_averaged)
+from ..scripts.bitmask import (MASK_BADPIX, MASK_SKYLINE, MASK_LOWTELL, MASK_DONOTUSE, DONOTUSE_BITS, TELL_MIN, SKY_NSIG)
 
 # ----------------------------------------------------------------------
 # run logging (mirror stdout to a per-night log file)
@@ -355,12 +356,26 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
     specres = np.interp(wave, ssc['wave'], ssc['spec_res']) if ssc.get('spec_res') is not None else None
     specresd = np.interp(wave, ssc['wave'], ssc['specresd']) if ssc.get('specresd') is not None else None
 
+    # --- quality bitmask (NIRWALS_DRP_PIXELMASK) ---
+    bitmask = np.zeros(flux.shape, dtype=np.int32)
+    if mask is not None:
+        bitmask[np.asarray(mask) != 0] |= MASK_BADPIX
+    if skycorr is not None:
+        sky1d = np.nanmedian(skycorr, axis=0)                       # sky brightness per wavelength
+        base = np.nanmedian(sky1d)
+        scat = 1.4826 * np.nanmedian(np.abs(sky1d - base))          # robust scatter (MAD)
+        sky_line = np.isfinite(sky1d) & (scat > 0) & (sky1d > base + SKY_NSIG * scat)
+        bitmask[:, sky_line] |= MASK_SKYLINE
+    low_tell = ~np.isfinite(tellcorr) | (tellcorr < TELL_MIN)
+    bitmask[:, low_tell] |= MASK_LOWTELL
+    bitmask[(bitmask & DONOTUSE_BITS) != 0] |= MASK_DONOTUSE
+
     obsinfo = {'exposure_id': sci_exp['exposure_id'], 'exptime': ssc.get('exptime'),
                'airmass': ssc.get('airmass'), 'gain': ssc.get('gain'), 'grating_angle': ssc.get('grating_angle')}
 
     return {'wave': wave, 'flux': flux, 'sigma': sigma,
             'exp': sci_exp,
-            'mask': mask, 'skycorr': skycorr, 'tellcorr': tellcorr,
+            'mask': bitmask, 'skycorr': skycorr, 'tellcorr': tellcorr,
             'specres': specres, 'specresd': specresd, 'obsinfo': obsinfo}
 
 
@@ -406,8 +421,21 @@ def write_combined_outputs(combined, obs_date, throughput_file, plot=True):
     # edge-clip the 1D to the same range as the 2D file before writing
     keep = clip_edges_mask(combined['wave'])
     write_combined_fits(combined, str(out_2d), throughput_file=throughput_file)
-    write_fluxcal_fits(template_file=ssc_file, wave=combined['wave'][keep], flux=flux_1d[keep], sigma=sigma_1d[keep],
-                        out_file=str(out_1d), throughput_file=throughput_file)
+
+    # setting ivar=0 for DONOTUSE in 1D spec
+    wl_bits = (np.bitwise_or.reduce(combined['mask_all'].astype(np.int32), axis=0)
+               if combined.get('mask_all') is not None
+               else np.zeros(combined['wave'].shape, dtype=np.int32))
+    
+    donotuse = (wl_bits & MASK_DONOTUSE) != 0
+
+    flux_out = flux_1d       # unmasked
+    sigma_out = sigma_1d.copy()
+    sigma_out[donotuse] = np.inf  # ivar=0 for DONOTUSE pixels
+
+    write_fluxcal_fits(template_file=ssc_file, wave=combined['wave'][keep],
+                       flux=flux_out[keep], sigma=sigma_out[keep],
+                       out_file=str(out_1d), throughput_file=throughput_file)
 
     print(f'\n\nwrote {out_2d}')
     print(f'wrote {out_1d}', end='\n\n')
