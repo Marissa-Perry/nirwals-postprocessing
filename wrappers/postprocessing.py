@@ -433,9 +433,11 @@ def write_combined_outputs(combined, obs_date, throughput_file, plot=True):
     sigma_out = sigma_1d.copy()
     sigma_out[donotuse] = np.inf  # ivar=0 for DONOTUSE pixels
 
+    wl_bits = np.bitwise_or.reduce(combined['mask_all'].astype(np.int32), axis=0)
     write_fluxcal_fits(template_file=ssc_file, wave=combined['wave'][keep],
-                       flux=flux_out[keep], sigma=sigma_out[keep],
-                       out_file=str(out_1d), throughput_file=throughput_file)
+                    flux=flux_1d[keep], sigma=sigma_1d[keep],
+                    out_file=str(out_1d), throughput_file=throughput_file,
+                    mask=wl_bits[keep])
 
     print(f'\n\nwrote {out_2d}')
     print(f'wrote {out_1d}', end='\n\n')
