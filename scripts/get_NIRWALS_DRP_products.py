@@ -116,7 +116,6 @@ def exposure_dict(filepath, product_type='science'):
             sci = hdul[0]
         wave = hdul['WAVE'] if 'WAVE' in ext_names else None
         specres = hdul['SPECRES'] if 'SPECRES' in ext_names else None
-        specresd = hdul['SPECRESD'] if 'SPECRESD' in ext_names else None
         specresc = hdul['SPECRES_COEFF_PER_FIBER'] if 'SPECRES_COEFF_PER_FIBER' in ext_names else None
 
         # airmass value from metadata is invalid, computing using telescope altitude
@@ -140,7 +139,6 @@ def exposure_dict(filepath, product_type='science'):
 
             'flux': sci.data,
             'spec_res': np.asarray(specres.data, dtype=float) if specres is not None else None,
-            'specresd': np.asarray(specresd.data, dtype=float) if specresd is not None else None,
             'specres_coeffs': np.asarray(specresc.data, dtype=float) if specresc is not None else None,
 
             'primary_header': meta,
