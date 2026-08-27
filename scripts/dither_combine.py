@@ -168,8 +168,6 @@ def combine_dithers(per_exposure_results, astrometry_file=ASTROMETRY_FILE, offse
         combined['tellcorr'] = first['tellcorr']
     if first.get('specres') is not None:
         combined['specres'] = first['specres']
-    if first.get('specresd') is not None:
-        combined['specresd'] = first['specresd']
     return combined
 
 

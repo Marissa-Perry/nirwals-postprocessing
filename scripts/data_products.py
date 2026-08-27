@@ -73,7 +73,7 @@ def obsinfo_hdu(rows):
 # ----- 2D post-processed product (row-stacked spectra + cube) --------------- #
 def write_postprocessed_fits(combined, out_file, throughput_file=None):
     """
-    Write the 2D product: PRIMARY, FLUX, IVAR, MASK, WAVE, SPECRES, SPECRESD,
+    Write the 2D product: PRIMARY, FLUX, IVAR, MASK, WAVE, SPECRES,
     OBSINFO, XPOS, YPOS, SKYCORR, TELLCORR, FLUXCAL, CUBE, CUBE_IVAR.
     Wavelength-axis arrays are edge-clipped; extensions absent in `combined` are skipped.
     """
@@ -114,29 +114,27 @@ def write_postprocessed_fits(combined, out_file, throughput_file=None):
     # 4 WAVE
     hdus.append(stamp(fits.ImageHDU(wave.astype(np.float64), name='WAVE'), 'wavelength vector in units of A', ref.get('CUNIT1', 'Angstrom')))
 
-    # 5 SPECRES / 6 SPECRESD
+    # 5 SPECRES
     if combined.get('specres') is not None:
         hdus.append(stamp(fits.ImageHDU(np.asarray(combined['specres'])[keep].astype(np.float32), name='SPECRES'), 'median spectral resolution (R)'))
-    if combined.get('specresd') is not None:
-        hdus.append(stamp(fits.ImageHDU(np.asarray(combined['specresd'])[keep].astype(np.float32), name='SPECRESD'), 'standard deviation (1-sigma) of SPECRES'))
 
-    # 7 OBSINFO
+    # 6 OBSINFO
     if combined.get('obsinfo'):
         hdus.append(obsinfo_hdu(combined['obsinfo']))
 
-    # 8 XPOS / 9 YPOS
+    # 7 XPOS / 8 YPOS
     hdus.append(stamp(fits.ImageHDU(combined['x_arcsec'].astype(np.float32), name='XPOS'), 'fiber X-position relative to IFU center', 'arcsec'))
     hdus.append(stamp(fits.ImageHDU(combined['y_arcsec'].astype(np.float32), name='YPOS'), 'fiber Y-position relative to IFU center', 'arcsec'))
 
-    # 10 SKYCORR
+    # 9 SKYCORR
     if combined.get('skycorr') is not None:
         hdus.append(stamp(fits.ImageHDU(combined['skycorr'][:, keep].astype(np.float32), name='SKYCORR'), 'subtracted sky emission', bunit))
 
-    # 11 TELLCORR
+    # 10 TELLCORR
     if combined.get('tellcorr') is not None:
         hdus.append(stamp(fits.ImageHDU(np.asarray(combined['tellcorr'])[keep].astype(np.float32), name='TELLCORR'), 'telluric transmission correction'))
 
-    # 12 FLUXCAL (throughput curve interpolated onto WAVE)
+    # 11 FLUXCAL (throughput curve interpolated onto WAVE)
     if throughput_file is not None:
         try:
             t = pd.read_csv(throughput_file)
@@ -146,7 +144,7 @@ def write_postprocessed_fits(combined, out_file, throughput_file=None):
         except Exception as e:
             print(f'  FLUXCAL: could not read throughput {throughput_file} ({e})')
 
-    # 13 CUBE / 14 CUBE_IVAR
+    # 12 CUBE / 13 CUBE_IVAR
     cube = fits.ImageHDU(combined['cube'][keep].astype(np.float32), name='CUBE')
     cube.header['EXTDESC'] = ('3d data cube (all exposures combined)', 'extension contents')
     cube.header['BUNIT'] = bunit
@@ -160,8 +158,8 @@ def write_postprocessed_fits(combined, out_file, throughput_file=None):
 
 def write_1d_fits(template_file, wave, flux, sigma, out_file, throughput_file, mask=None):
     """
-    Write the 1D co-add: PRIMARY, FLUX, IVAR, MASK, WAVE, SPECRES, SPECRESD --
-    same layout/conventions as the 2D product. IVAR is zeroed at DONOTUSE; FLUX untouched.
+    Write the 1D co-add: PRIMARY, FLUX, IVAR, MASK, WAVE, SPECRES
+    IVAR is zeroed at DONOTUSE.
     """
     wave = np.asarray(wave, np.float64)
     with fits.open(template_file) as tpl:
@@ -197,7 +195,7 @@ def write_1d_fits(template_file, wave, flux, sigma, out_file, throughput_file, m
         if 'CUNIT1' in fx.header:
             wv.header['BUNIT'] = (fx.header['CUNIT1'], 'wavelength unit')
 
-        # order: PRIMARY, FLUX, IVAR, MASK, WAVE, SPECRES, SPECRESD
+        # order: PRIMARY, FLUX, IVAR, MASK, WAVE, SPECRES
         out = [pri, fx, iv]
         if mask is not None:
             mh = mask_hdu(mask)
@@ -210,8 +208,5 @@ def write_1d_fits(template_file, wave, flux, sigma, out_file, throughput_file, m
             res = fits.ImageHDU(R, name='SPECRES')
             res.header['BUNIT'] = ('', 'Dimensionless R = lambda / FWHM')
             out.append(res)
-        if 'SPECRESD' in names and tpl_wave is not None:
-            Rd = np.interp(wave, tpl_wave, np.asarray(tpl['SPECRESD'].data, float)).astype(np.float32)
-            out.append(fits.ImageHDU(Rd, name='SPECRESD'))
 
         fits.HDUList(out).writeto(out_file, overwrite=True)

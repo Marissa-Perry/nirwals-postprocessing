@@ -355,7 +355,6 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
     skycorr = _obj_fibers(ssc.get('skycorr'))                                     # (n_fib, n_wave) sky model, or None
     tellcorr = np.interp(wave, telluric_fit['wave'], telluric_fit['transmission'], left=np.nan, right=np.nan)  # 1D transmission
     specres = np.interp(wave, ssc['wave'], ssc['spec_res']) if ssc.get('spec_res') is not None else None
-    specresd = np.interp(wave, ssc['wave'], ssc['specresd']) if ssc.get('specresd') is not None else None
 
     # --- quality bitmask (NIRWALS_DRP_PIXELMASK) ---
     bitmask = np.zeros(flux.shape, dtype=np.int32)
@@ -377,7 +376,7 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
     return {'wave': wave, 'flux': flux, 'sigma': sigma,
             'exp': sci_exp,
             'mask': bitmask, 'skycorr': skycorr, 'tellcorr': tellcorr,
-            'specres': specres, 'specresd': specresd, 'obsinfo': obsinfo}
+            'specres': specres, 'obsinfo': obsinfo}
 
 
 def output_paths(ssc_file, obs_date, suffixes):
