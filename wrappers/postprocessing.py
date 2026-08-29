@@ -399,7 +399,7 @@ def write_combined_outputs(combined, obs_date, throughput_file, plot=True):
     (cx, cy), reff = half_light_radius_rough_estimate(combined['flux_all'], x, y)
     inside = (x - cx) ** 2 + (y - cy) ** 2 <= reff ** 2
     # flux-conserving co-add: sum in-region fibers per exposure, then ivar-average the exposures
-    flux_1d, sigma_1d = coadd_fibers_averaged(combined['flux_all'], combined['sigma_all'], inside, combined['n_dither'])
+    flux_1d, sigma_1d, ngood_1d = coadd_fibers_averaged(combined['flux_all'], combined['sigma_all'], inside, combined['n_dither'])
     extract_info = {'method': 'fiber co-add', 'center': (cx, cy), 'radius': reff,
                     'n_fibers': int(inside.sum()), 'fibers_used': inside}
 
@@ -421,10 +421,15 @@ def write_combined_outputs(combined, obs_date, throughput_file, plot=True):
     # 2D product (row-stacked spectra + cube)
     write_postprocessed_fits(combined, str(out_2d), throughput_file=throughput_file)
 
-    # 1D co-add: bitmask collapsed over fibers (writer zeros IVAR at DONOTUSE)
     keep = clip_edges_mask(combined['wave'])
-    wl_bits = (np.bitwise_or.reduce(combined['mask_all'].astype(np.int32), axis=0)
-               if combined.get('mask_all') is not None else np.zeros(combined['wave'].shape, np.int32))
+    nwave = combined['wave'].size
+    wl_bits = np.zeros(nwave, dtype=np.int32)
+    if combined.get('mask_all') is not None:
+        or_bits = np.bitwise_or.reduce(combined['mask_all'].astype(np.int32), axis=0)
+        wl_bits[(or_bits & MASK_SKYLINE) != 0] |= MASK_SKYLINE
+        wl_bits[(or_bits & MASK_LOWTELL) != 0] |= MASK_LOWTELL
+    wl_bits[ngood_1d == 0] |= MASK_BADPIX
+    wl_bits[(wl_bits & (MASK_BADPIX | MASK_LOWTELL)) != 0] |= MASK_DONOTUSE
     write_1d_fits(template_file=ssc_file, wave=combined['wave'][keep],
                   flux=flux_1d[keep], sigma=sigma_1d[keep],
                   out_file=str(out_1d), throughput_file=throughput_file, mask=wl_bits[keep])
