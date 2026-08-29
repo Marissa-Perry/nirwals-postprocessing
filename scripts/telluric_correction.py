@@ -198,7 +198,7 @@ def fit_telluric_star_model(star_flux, star_wave, star_ivar, star_gpm, star_prop
 def fit_telluric_poly_model(star_flux, star_wave, star_ivar, star_gpm, airmass, exptime,
                             telgridfile=TELLPCA_FILE, resln_guess=4000., polyorder=8, sn_clip=30.0, maxiter=3,
                             pix_shift_bounds=(-10.0, 10.0), pix_stretch_bounds=(0.95, 1.05), func='legendre', 
-                            model='exp', z_obj=0.0, mask_lyman_a=False, mask_hydrogen=True, hydrogen_mask_wid=20., disp=False):
+                            model='exp', z_obj=0.0, mask_lyman_a=False, disp=False):
     '''
     Fit PypeIt's polynomial object model + telluric transmission to a spectrum
 
@@ -225,8 +225,8 @@ def fit_telluric_poly_model(star_flux, star_wave, star_ivar, star_gpm, airmass, 
     # mask bad pixels (+ optionally stellar hydrogen recombination lines)
     mask_bad, mask_recomb, mask_tell = flux_calib.get_mask(
         star_wave, star_flux, star_ivar, star_gpm,
-        mask_hydrogen_lines=mask_hydrogen, mask_helium_lines=False,
-        mask_telluric=False, hydrogen_mask_wid=hydrogen_mask_wid)
+        mask_hydrogen_lines=False, mask_helium_lines=False,
+        mask_telluric=False)
     mask_tot = mask_bad & mask_recomb & mask_tell
 
     # poly_telluric restricts the fit to redward of Lyman-alpha
@@ -300,7 +300,7 @@ def windows_from_transmission(transmission, wave, threshold=0.95, min_width=5):
     return [(float(s), float(e)) for s, e in zip(starts, ends) if (e - s) >= min_width]
 
 
-def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=None, show=True):
+def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=(4000,12500), show=True):
     '''
     Star model fit diagnostic.
       top:    obs, full model (star x telluric), intrinsic star model
@@ -327,41 +327,41 @@ def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=p
             ax.axvspan(s, e, color='grey', alpha=0.35, zorder=0)
 
     # --- top: obs + models ---
-    ax1.step(star_wave, star_flux, where='mid', color='black', alpha=0.5, lw=0.8, label='observed', zorder=1)
-    ax1.step(wave_m, star_model, where='mid', color='black', lw=1.2, ls='dashed', label=r'star model', zorder=2)
-    ax1.step(wave_m, full_model, where='mid', color='red', lw=1.2, label=r'star $\times$ tellurics (full model)', zorder=3)
+    ax1.step(star_wave, star_flux, where='mid', color='black', lw=0.8, label='observed', zorder=1)
+    ax1.step(wave_m, star_model, where='mid', color='#a2d2ff', lw=1.5, ls='dashed', label=r'star model', zorder=2)
+    ax1.step(wave_m, full_model, where='mid', color='#0077b6', lw=1.2, label=r'star $\times$ tellurics (full model)', zorder=3)
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
     ax1.set_xlim(np.nanmin(wave_m), np.nanmax(wave_m))
     if ylim is not None:
         ax1.set_ylim(*ylim)
     ax1.legend(fontsize=10, loc='upper right')
-    ax1.text(0.02, 0.92, 'masked H recombination lines', transform=ax1.transAxes, fontsize=9, color='0.3')
+    # ax1.text(0.02, 0.92, 'masked H recombination lines', transform=ax1.transAxes, fontsize=9, color='0.3')
 
     # --- middle: residuals ---
     resid = (star_flux - full_model) / np.nanmedian(full_model)
-    ax2.set_ylabel('res', fontsize=10, labelpad=10)
-    ax2.set_ylim(-0.2, 0.2)
-    ax2.step(star_wave, resid, where='mid', color='black', alpha=0.5, lw=0.8, zorder=1)
-    ax2.axhline(0, color='red', lw=1.0)
+    ax2.set_ylabel('residual', fontsize=9, labelpad=10)
+    ax2.set_ylim(-0.15, 0.15)
+    ax2.step(star_wave, resid, where='mid', color='black', lw=0.8, zorder=1)
+    ax2.axhline(0, color='#0077b6', lw=1.5, zorder=0)
 
     # --- bottom: fitted transmission ---
     ax3.fill_between(wave_m, T, step='mid', color='grey', alpha=0.7, zorder=1)
     ax3.step(wave_m, T, where='mid', color='black', lw=0.6, zorder=2)
     ax3.set_ylim(-0.01, 1.1)
-    ax3.set_ylabel('transmission', fontsize=10, labelpad=28)
-    ax3.set_xlabel(r'Observed Wavelength [$\AA$]', fontsize=13, labelpad=15)
+    ax3.set_ylabel('transmission', fontsize=9, labelpad=27)
+    ax3.set_xlabel(r'Wavelength [$\AA$]', fontsize=13, labelpad=15)
 
     plt.tight_layout()
     if savepath:
         save_dir = os.path.join(savepath, obs_date, obj_dict['exposure_id']) if obs_date else os.path.join(savepath, obj_dict['exposure_id'])
         os.makedirs(save_dir, exist_ok=True)
 
-        filename = os.path.join(save_dir, 'telluric_model.png')
+        filename = os.path.join(save_dir, 'telluric_model_star.png')
         plt.savefig(filename, dpi=500, bbox_inches='tight')
     plt.show() if show else plt.close()
 
 
-def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=None, show=True):
+def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=(2400,8300), show=True):
     '''
     Polynomial model fit diagnostic.
       top:    obs, full model (poly x telluric), polynomial continuum model
@@ -391,27 +391,27 @@ def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=p
     # --- top: obs + models ---
     ax1.step(star_wave, star_flux, where='mid', color='black', alpha=0.5, lw=0.8, label='observed', zorder=1)
     ax1.step(wave_m, poly_model, where='mid', color='black', lw=1.2, ls='dashed', label=r'polynomial model', zorder=2)
-    ax1.step(wave_m, full_model, where='mid', color='red', lw=1.2, label=r'poly $\times$ tellurics (full model)', zorder=3)
+    ax1.step(wave_m, full_model, where='mid', color='#1CABC4', lw=1.2, label=r'poly $\times$ tellurics (full model)', zorder=3)
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
     ax1.set_xlim(np.nanmin(wave_m), np.nanmax(wave_m))
     if ylim is not None:
         ax1.set_ylim(*ylim)
     ax1.legend(fontsize=10, loc='upper right')
-    if has_masked:
-        ax1.text(0.02, 0.92, 'masked H recombination lines', transform=ax1.transAxes, fontsize=9, color='0.3')
+    # if has_masked:
+    #     ax1.text(0.02, 0.92, 'masked H recombination lines', transform=ax1.transAxes, fontsize=9, color='0.3')
 
     # --- middle: residuals ---
     resid = (star_flux - full_model) / np.nanmedian(full_model)
-    ax2.set_ylabel('res', fontsize=10, labelpad=10)
-    ax2.set_ylim(-0.3, 0.3)
+    ax2.set_ylabel('residual', fontsize=9, labelpad=10)
+    ax2.set_ylim(-0.15, 0.15)
     ax2.step(star_wave, resid, where='mid', color='black', alpha=0.5, lw=0.8, zorder=1)
-    ax2.axhline(0, color='red', lw=1.0)
+    ax2.axhline(0, color='#1CABC4', lw=1.5, zorder=0)
 
     # --- bottom: fitted transmission ---
     ax3.fill_between(wave_m, T, step='mid', color='grey', alpha=0.7, zorder=1)
     ax3.step(wave_m, T, where='mid', color='black', lw=0.6, zorder=2)
     ax3.set_ylim(-0.01, 1.1)
-    ax3.set_ylabel('transmission', fontsize=10, labelpad=22)
+    ax3.set_ylabel('transmission', fontsize=9, labelpad=28)
     ax3.set_xlabel(r'Observed Wavelength [$\AA$]', fontsize=13, labelpad=15)
 
     plt.tight_layout()
