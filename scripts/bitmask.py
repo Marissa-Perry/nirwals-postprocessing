@@ -15,7 +15,7 @@ MASK_DONOTUSE = MASKBITS['DONOTUSE'][0]
 DONOTUSE_BITS = MASK_BADPIX | MASK_LOWTELL
 
 # thresholds for the positional flags
-TELL_MIN = 0.6      # TELLURIC below this transmission
+TELL_MIN = 0.8      # TELLURIC below this transmission
 SKY_NSIG = 5.0      # SKYLINE where sky > median + SKY_NSIG * MAD
 
 
