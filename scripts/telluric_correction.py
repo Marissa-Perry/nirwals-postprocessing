@@ -300,7 +300,7 @@ def windows_from_transmission(transmission, wave, threshold=0.95, min_width=5):
     return [(float(s), float(e)) for s, e in zip(starts, ends) if (e - s) >= min_width]
 
 
-def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=(4000,12500), show=True):
+def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=None, show=True):
     '''
     Star model fit diagnostic.
       top:    obs, full model (star x telluric), intrinsic star model
@@ -360,8 +360,7 @@ def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=p
         plt.savefig(filename, dpi=500, bbox_inches='tight')
     plt.show() if show else plt.close()
 
-
-def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=(2400,8300), show=True):
+def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=None, show=True):
     '''
     Polynomial model fit diagnostic.
       top:    obs, full model (poly x telluric), polynomial continuum model
@@ -428,17 +427,13 @@ def plot_telluric_correction(wave, raw_flux, corr_flux, obj_dict, savepath=plot_
     '''
     Corrected vs uncorrected, with the corr/raw ratio below.
     '''
-    sm_raw = median_filter(np.nan_to_num(raw_flux).astype(np.float32), size=smooth, mode='reflect')
-    sm_corr = median_filter(np.nan_to_num(corr_flux).astype(np.float32), size=smooth, mode='reflect')
     transmission = raw_flux / corr_flux
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 5), sharex=True, gridspec_kw={'hspace': 0, 'height_ratios': [3, 1]})
     ax1.set_title(obj_dict['object'], fontsize=14, pad=15)
-    ax1.step(wave, raw_flux, where='mid', color='blue', alpha=0.2, lw=0.6)
-    ax1.step(wave, sm_raw, where='mid', color='blue', alpha=0.8, lw=1.3, label='uncorrected')
-    ax1.step(wave, corr_flux, where='mid', color='black', alpha=0.4, lw=0.6)
-    ax1.step(wave, sm_corr, where='mid', color='black', lw=1.3, label='telluric corrected')
-    ax1.set_ylim(np.nanpercentile(corr_flux, 0.1), np.nanpercentile(corr_flux, 99.9))
+    ax1.step(wave, raw_flux, where='mid', color='blue', alpha=0.8, lw=0.5, label='uncorrected')
+    ax1.step(wave, corr_flux, where='mid', color='black', alpha=0.95, lw=0.5, label='telluric corrected')
+    ax1.set_ylim(np.nanpercentile(corr_flux, 0.5), np.nanpercentile(corr_flux, 99.9))
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
     ax1.legend(fontsize=12)
 

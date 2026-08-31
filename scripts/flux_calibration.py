@@ -316,39 +316,33 @@ def plot_flux_calibration(wave, counts, counts_err, flux_cal, flux_cal_err, gpcn
     counts, counts_err (1D arr): input spectrum, counts/s
     flux_cal, flux_cal_err (1D arr): calibrated spectrum
     '''
-    med_counts = median_filter(np.nan_to_num(counts).astype(np.float32), size=smooth, mode='reflect')
-    med_flux = median_filter(np.nan_to_num(flux_cal).astype(np.float32), size=smooth, mode='reflect')
 
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 6), sharex=True, gridspec_kw={'height_ratios': [3, 3, 1], 'hspace': 0})
     ax1.set_title(title, fontsize=15, pad=15)
 
     # top: counts/s
-    ax1.fill_between(wave, counts - counts_err, counts + counts_err, step='mid', color='blue', alpha=0.1, linewidth=0.6, zorder=0)
-    ax1.step(wave, counts, where='mid', color='blue', alpha=0.35, lw=0.6, zorder=1)
-    ax1.step(wave, med_counts, where='mid', color='blue', lw=1.5, label='reduced, telluric-corrected', zorder=2)
+    ax1.fill_between(wave, counts - counts_err, counts + counts_err, step='mid', color='blue', alpha=0.35, linewidth=0.5, zorder=0)
+    ax1.step(wave, counts, where='mid', color='blue', lw=0.5, zorder=1, label='reduced, telluric-corrected')
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
     finite_c = counts[np.isfinite(counts)]
     if finite_c.size:
-        ax1.set_ylim(np.percentile(finite_c, 0.1), np.percentile(finite_c, 99.9))
+        ax1.set_ylim(np.percentile(finite_c, 0.5), np.max(finite_c)+np.percentile(finite_c, 0.5))
     ax1.legend(fontsize=11, loc='upper right')
 
     # middle: flux calibrated
-    ax2.fill_between(wave, flux_cal - flux_cal_err, flux_cal + flux_cal_err, step='mid', color='brown', alpha=0.1, linewidth=0.6, zorder=0)
-    ax2.step(wave, flux_cal, where='mid', color='brown', alpha=0.35, lw=0.6, zorder=1)
-    ax2.step(wave, med_flux, where='mid', color='brown', lw=1.5, label='and flux calibrated', zorder=2)
+    ax2.fill_between(wave, flux_cal - flux_cal_err, flux_cal + flux_cal_err, step='mid', color='brown', alpha=0.35, linewidth=0.5, zorder=0)
+    ax2.step(wave, flux_cal, where='mid', color='brown', lw=0.5, zorder=1, label='and flux calibrated')
     ax2.set_ylabel(r'$F_\lambda$ [erg/s/cm$^2$/$\AA$]', fontsize=13, labelpad=15)
     ax2.set_xlabel(r'Observed Wavelength [$\AA$]', fontsize=13, labelpad=15)
     finite_f = flux_cal[np.isfinite(flux_cal)]
     if finite_f.size:
-        ax2.set_ylim(np.percentile(finite_f, 0.1), np.percentile(finite_f, 99.9))
+        ax2.set_ylim(np.percentile(finite_f, 0.5), np.max(finite_f)+np.percentile(finite_f, 0.5))
     ax2.legend(fontsize=11, loc='upper right')
 
     # bottom: good pixel counts
     mean_gp = np.mean(gpcnt_arr)
     ax3.step(gpcnt_wave, gpcnt_arr, where='mid', color='grey', alpha=0.8, linewidth=0.6)
     ax3.fill_between(gpcnt_wave, 0, gpcnt_arr, step='mid', color='black', alpha=0.15)
-    # ax3.axhline(mean_gp, color='black', lw=1, linestyle='dashed')
-    # ax3.text(x=np.median(gpcnt_wave), y=mean_gp, s='mean # of good pixels',ha='center', va='bottom', color='black', fontsize=10)
     ax3.set_ylabel('# good pix', fontsize=8, labelpad=15)
     ax3.set_xlabel(r'Observed Wavelength [$\AA$]', fontsize=15, labelpad=15)
     ax3.set_xlim(np.min(gpcnt_wave), np.max(gpcnt_wave))
