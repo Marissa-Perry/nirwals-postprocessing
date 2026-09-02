@@ -137,9 +137,7 @@ def coadd_bright_fibers_with_ivar(flux_all, sigma_all, frac=0.2):
     """
     Co-adding based on flux threshold.
 
-    NOTE: this is the fiber-selection step used only to build the 1D input
-    to the telluric-fitting routines below. Thus, it is separate from the 
-    final science 1D output.
+    NOTE: this is the fiber-selection step used only to build the 1D input to the telluric-fitting routines
     """
     fibers = select_bright_fibers(flux_all, frac=frac)
     flux, sigma = coadd_fibers(flux_all, sigma_all, fibers)
@@ -163,11 +161,15 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
     wave, flux_all, sigma_all = get_reduced_spectra(standard_exp, standard_exposures)
     flux, sigma, ivar, gpm = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
     gpm = gpm & clip_edges_mask(wave)   # trim detector edges (same clip applied to the final product for target)
+    median_specres = np.median(standard_exp['ssc']['spec_res'])   # get the median spectral resolution for center of model bounds
+    upper_specres_frac = max(standard_exp['ssc']['spec_res']) / median_specres  # fractional bound edges for model
+    lower_specres_frac = min(standard_exp['ssc']['spec_res']) / median_specres  # ''
 
-    fit = fit_telluric_star_model(
-        flux, wave, ivar, gpm, star_props,
-        standard_exp['airmass'], standard_exp['exptime'], polyorder=polyorder, disp=disp
-        )
+    fit = fit_telluric_star_model(flux, wave, ivar, gpm, star_props, 
+                                  standard_exp['airmass'], standard_exp['exptime'], 
+                                  resln_guess=median_specres,    
+                                  resln_frac_bounds=(lower_specres_frac, upper_specres_frac),
+                                  polyorder=polyorder, disp=disp)
     
     if plot:
         plot_star_telluric_model_fit(wave, flux, fit, standard_exp, obs_date=obs_date, show=False)
@@ -182,11 +184,16 @@ def fit_telluric_poly(target_exp, target_exposures, polyorder=3, disp=False, plo
     wave, flux_all, sigma_all = get_reduced_spectra(target_exp, target_exposures)
     flux, sigma, ivar, gpm = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
     gpm = gpm & clip_edges_mask(wave)   # trim detector edges (same clip applied to the final product for target)
+    median_specres = np.median(target_exp['ssc']['spec_res'])   # get the median spectral resolution for center of model bounds
+    upper_specres_frac = max(target_exp['ssc']['spec_res']) / median_specres  # fractional bound edges for model
+    lower_specres_frac = min(target_exp['ssc']['spec_res']) / median_specres  # ''
 
-    fit = fit_telluric_poly_model(
-        flux, wave, ivar, gpm,
-        target_exp['airmass'], target_exp['exptime'], polyorder=polyorder, disp=disp
-    )
+
+    fit = fit_telluric_poly_model(flux, wave, ivar, gpm,
+                                  target_exp['airmass'], target_exp['exptime'], 
+                                  resln_guess=median_specres, 
+                                  resln_frac_bounds=(lower_specres_frac, upper_specres_frac),
+                                  polyorder=polyorder, disp=disp)
     if plot:
         plot_poly_telluric_model_fit(wave, flux, fit, target_exp, obs_date=obs_date, show=False)
     return fit
@@ -308,8 +315,7 @@ def get_throughput_file(sci_exposures, args, plot=True):
 # ----------------------------------------------------------------------
 def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=None, fibfil=0.62, plot=True, obs_date=None):
     """
-    Apply telluric correction (and flux calibration, if throughput_file is
-    given) to one science exposure's full per-fiber 2D spectrum.
+    Apply telluric correction (and flux calibration, if throughput_file is given) to one science exposure's full per-fiber 2D spectrum.
     """
     wave, flux_all, sigma_all = get_reduced_spectra(sci_exp, exposures)
  

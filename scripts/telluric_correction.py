@@ -41,29 +41,9 @@ def load_model_transmission(wave_min, wave_max, telgridfile=TELLPCA_FILE):
     '''
     tell_dict = read_telluric_pca(telgridfile, wave_min=wave_min, wave_max=wave_max)
     wave_grid = tell_dict['wave_grid']
-    # mean PCA component -> transmission (transform used in Telluric.sort_telluric)
+    # mean PCA component
     transmission = np.exp(-np.sinh(tell_dict['tell_pca'][0]))
     return wave_grid, transmission
-
-def telluric_windows(wave, threshold=0.95, telgridfile=TELLPCA_FILE, min_width=5):
-    '''
-    Define telluric windows from the model atmosphere, clipped to this
-    spectrum's coverage. Windows are where model transmission < threshold.
-
-    wave (1D arr): your data's wavelength grid [A]
-    threshold (float): transmission below this counts as telluric
-    min_width (int): drop windows narrower than this many Angstrom
-    '''
-    lo, hi = float(np.nanmin(wave)), float(np.nanmax(wave))
-    wave_grid, transmission_curve = load_model_transmission(lo, hi, telgridfile)
-
-    mask = transmission_curve < threshold
-    change = np.diff(np.concatenate([[0], mask.astype(int), [0]]))
-    starts = wave_grid[np.where(change == 1)[0]]
-    ends = wave_grid[np.where(change == -1)[0] - 1]
-    windows = [(float(s), float(e)) for s, e in zip(starts, ends) if (e - s) >= min_width]
-
-    return windows
 
 def query_star_properties(star_name):
     '''
@@ -91,11 +71,9 @@ def query_star_properties(star_name):
 
     return star_properties_dict
 
-
 def to_schmidt_kaler_type(sp_type, valid=SCHMIDT_KALER_TYPES):
     '''
-    Map a SIMBAD spectral type ('B7III') to the nearest entry in PypeIt's
-    Schmidt-Kaler table ('B7'). Raises if the class isn't covered (K, M).
+    Map a SIMBAD spectral type to the nearest entry in PypeIt's Schmidt-Kaler table. 
     '''
     letter = sp_type[0].upper()
     if letter not in 'OBAFG':
@@ -122,22 +100,21 @@ def to_schmidt_kaler_type(sp_type, valid=SCHMIDT_KALER_TYPES):
     return nearest
 
 def fit_telluric_star_model(star_flux, star_wave, star_ivar, star_gpm, star_props, airmass, exptime,
-                            telgridfile=TELLPCA_FILE, resln_guess=4000., polyorder=8, sn_clip=30.0, maxiter=3,
-                            pix_shift_bounds=(-10.0, 10.0), pix_stretch_bounds=(0.95, 1.05), hydrogen_mask_wid=20., disp=False):
+                            resln_guess, resln_frac_bounds, telgridfile=TELLPCA_FILE, 
+                            polyorder=8, sn_clip=30.0, maxiter=3, pix_shift_bounds=(-10.0, 10.0), 
+                            pix_stretch_bounds=(0.95, 1.05), hydrogen_mask_wid=35., disp=False):
     '''
     Fit PypeIt's star object model + telluric transmission to a standard star.
-    Mirrors pypeit.core.telluric.star_telluric, but on arrays (no spec1dfile).
-
-    star_props: dict from query_star_properties (uses sp_type, v_mag, ra, dec)
+    Uses pypeit.core.telluric.star_telluric method, but with arrays instead of a spec1dfile.
+    Generates a Kurucz stellar model for a given apparent magnitude and spectral type. 
+    If these two properties are not provided, falls back on using RA and DEC to retrieve an archival standard spectrum (list: ['xshooter' 'calspec' 'esofil' 'noao' 'ing']).
 
     Returns dict with 'transmission', 'star_model', 'TelObj', 'mask_recomb', fit params
     '''
     star_type = to_schmidt_kaler_type(star_props['sp_type'])
 
-    # model standard-star SED (Kurucz, or Vega for A0)
-    std_spec = standard.get_standard_spectrum(
-        spectral_type=star_type, V_mag=star_props['v_mag'],
-        ra=star_props['ra'], dec=star_props['dec'])
+    # standard-star SED model
+    std_spec = standard.get_standard_spectrum(spectral_type=star_type, V_mag=star_props['v_mag'], ra=star_props['ra'], dec=star_props['dec'])
 
     polyorder_vec = np.full(1, polyorder)
     obj_params = dict(
@@ -154,8 +131,7 @@ def fit_telluric_star_model(star_flux, star_wave, star_ivar, star_gpm, star_prop
         std_dec=std_spec.meta['dec_deg'],
         std_name=std_spec.meta['Name'],
         std_cal=std_spec.meta['File'],
-        output_meta_keys=('airmass', 'polyorder_vec', 'exptime', 'func',
-                          'std_ra', 'std_dec', 'std_cal'),
+        output_meta_keys=('airmass', 'polyorder_vec', 'exptime', 'func', 'std_ra', 'std_dec', 'std_cal'),
         debug=False,
     )
 
@@ -166,12 +142,23 @@ def fit_telluric_star_model(star_flux, star_wave, star_ivar, star_gpm, star_prop
     mask_tot = mask_bad & mask_recomb & mask_tell
 
     TelObj = Telluric(
-        star_wave.astype(float), star_flux.astype(float),
-        star_ivar.astype(float), mask_tot,
-        telgridfile, obj_params, init_star_model, eval_star_model,
-        teltype='pca', resln_guess=resln_guess, sn_clip=sn_clip, maxiter=maxiter,
-        pix_shift_bounds=pix_shift_bounds, pix_stretch_bounds=pix_stretch_bounds,
-        debug=False, disp=disp,
+        star_wave.astype(float), 
+        star_flux.astype(float),
+        star_ivar.astype(float), 
+        mask_tot,
+        telgridfile, 
+        obj_params, 
+        init_star_model, 
+        eval_star_model,
+        teltype='pca', 
+        resln_guess=resln_guess,
+        resln_frac_bounds=resln_frac_bounds,
+        sn_clip=sn_clip, 
+        maxiter=maxiter,
+        pix_shift_bounds=pix_shift_bounds, 
+        pix_stretch_bounds=pix_stretch_bounds,
+        debug=False, 
+        disp=disp
     )
     TelObj.run(only_orders=None)
 
@@ -196,7 +183,8 @@ def fit_telluric_star_model(star_flux, star_wave, star_ivar, star_gpm, star_prop
 
 
 def fit_telluric_poly_model(star_flux, star_wave, star_ivar, star_gpm, airmass, exptime,
-                            telgridfile=TELLPCA_FILE, resln_guess=4000., polyorder=8, sn_clip=30.0, maxiter=3,
+                            resln_guess, resln_frac_bounds, telgridfile=TELLPCA_FILE, 
+                            polyorder=8, sn_clip=30.0, maxiter=3,
                             pix_shift_bounds=(-10.0, 10.0), pix_stretch_bounds=(0.95, 1.05), func='legendre', 
                             model='exp', z_obj=0.0, mask_lyman_a=False, disp=False):
     '''
@@ -222,11 +210,9 @@ def fit_telluric_poly_model(star_flux, star_wave, star_ivar, star_gpm, airmass, 
         debug=False,
     )
 
-    # mask bad pixels (+ optionally stellar hydrogen recombination lines)
-    mask_bad, mask_recomb, mask_tell = flux_calib.get_mask(
-        star_wave, star_flux, star_ivar, star_gpm,
-        mask_hydrogen_lines=False, mask_helium_lines=False,
-        mask_telluric=False)
+    # mask bad pixels =
+    mask_bad, mask_recomb, mask_tell = flux_calib.get_mask(star_wave, star_flux, star_ivar, star_gpm, 
+                                                           mask_hydrogen_lines=False, mask_helium_lines=False, mask_telluric=False)
     mask_tot = mask_bad & mask_recomb & mask_tell
 
     # poly_telluric restricts the fit to redward of Lyman-alpha
@@ -234,12 +220,23 @@ def fit_telluric_poly_model(star_flux, star_wave, star_ivar, star_gpm, airmass, 
         mask_tot = mask_tot & (star_wave > 1216.15 * (1 + z_obj))
 
     TelObj = Telluric(
-        star_wave.astype(float), star_flux.astype(float),
-        star_ivar.astype(float), mask_tot,
-        telgridfile, obj_params, init_poly_model, eval_poly_model,
-        teltype='pca', resln_guess=resln_guess, sn_clip=sn_clip, maxiter=maxiter,
-        pix_shift_bounds=pix_shift_bounds, pix_stretch_bounds=pix_stretch_bounds,
-        debug=False, disp=disp,
+        star_wave.astype(float), 
+        star_flux.astype(float),
+        star_ivar.astype(float), 
+        mask_tot,
+        telgridfile, 
+        obj_params, 
+        init_poly_model, 
+        eval_poly_model,
+        teltype='pca', 
+        resln_guess=resln_guess, 
+        resln_frac_bounds=resln_frac_bounds,
+        sn_clip=sn_clip, 
+        maxiter=maxiter,
+        pix_shift_bounds=pix_shift_bounds, 
+        pix_stretch_bounds=pix_stretch_bounds,
+        debug=False, 
+        disp=disp
     )
     TelObj.run(only_orders=None)
 
@@ -286,18 +283,6 @@ def apply_telluric_model(flux, sigma, wave, transmission, tell_wave, t_floor=0.1
     tell_corr_dict = {'flux': flux_corr, 'sigma': sigma_corr, 'transmission': T, 'good': good}
 
     return tell_corr_dict
-
-
-def windows_from_transmission(transmission, wave, threshold=0.95, min_width=5):
-    '''
-    Telluric windows where fitted transmission drops below threshold.
-    transmission, wave: from fit_telluric_star_model (fit['transmission'], fit['wave'])
-    '''
-    mask = transmission < threshold
-    change = np.diff(np.concatenate([[0], mask.astype(int), [0]]))
-    starts = wave[np.where(change == 1)[0]]
-    ends = wave[np.where(change == -1)[0] - 1]
-    return [(float(s), float(e)) for s, e in zip(starts, ends) if (e - s) >= min_width]
 
 
 def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=None, show=True):
@@ -359,6 +344,7 @@ def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=p
         filename = os.path.join(save_dir, 'telluric_model_star.png')
         plt.savefig(filename, dpi=500, bbox_inches='tight')
     plt.show() if show else plt.close()
+
 
 def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=plot_tell_corr_dir, obs_date=None, ylim=None, show=True):
     '''
