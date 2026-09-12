@@ -24,8 +24,8 @@ def coadd_fibers_averaged(flux_all, sigma_all, fibers, n_dither):
     '''
     Flux-conserving co-add across dithered exposures.
 
-    Within each exposure the in-region fibres are summed, then the per-exposure
-    spectra are inverse-variance averaged. Bad fibers do not contribute.
+    Within each exposure the in-region fibres are summed, then the per-exposure spectra are inverse-variance averaged. 
+    Bad fibers do not contribute.
 
     Returns (flux, sigma, ngood)
     '''
