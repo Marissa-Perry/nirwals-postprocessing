@@ -259,7 +259,7 @@ def fit_telluric_poly_model(star_flux, star_wave, star_ivar, star_gpm, airmass, 
     return out
 
 
-def apply_telluric_model(flux, sigma, wave, transmission, tell_wave, t_floor=0.15):
+def apply_telluric_model(flux, sigma, wave, transmission, tell_wave, t_floor=0):
     '''
     Divide a galaxy spectrum by a model telluric transmission curve.
     Interpolates the transmission onto gal_wave if the grids differ.
