@@ -296,10 +296,12 @@ def get_throughput_file(sci_exposures, args, plot=True):
           'with PypeIt poly model, then computing throughput', end='\n\n')
     specphot_fit = fit_telluric_poly(specphot_exp, specphot_exposures, polyorder=args.specphot_polyorder, obs_date=args.obs_date)
 
-    wave, _, sigma_all = get_reduced_spectra(specphot_exp, specphot_exposures)
-    flux_all = np.asarray(specphot_exp['flux'], dtype=float)
+    flux_dtype = specphot_exp['flux'].dtype
+    # object-fiber-only flux/sigma, on a common wavelength grid
+    wave, flux_all, sigma_all = get_reduced_spectra(specphot_exp, specphot_exposures)
     res = apply_telluric_model(flux_all, sigma_all, wave, specphot_fit['transmission'], specphot_fit['wave'])
-    specphot_exp['flux'][:] = res['flux'].astype(specphot_exp['flux'].dtype)
+    specphot_exp['flux'] = res['flux'].astype(flux_dtype)
+    specphot_exp['wave'] = wave
 
     throughput_result = compute_throughput(spec_phot_obs=specphot_exp, spec_phot_name=specphot_name, tell_windows=None)
 
