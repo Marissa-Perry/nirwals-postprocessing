@@ -9,6 +9,7 @@ from scipy.interpolate import interp1d
 from pathlib import Path
 import glob
 import os
+import json
 
 # -------- filepath params ----------
 this_dir = Path(__file__).resolve().parent     # .../post_reduction_processing/scripts
@@ -20,12 +21,19 @@ output_dir = proj_dir / 'outputs'
 plot_dir = output_dir / 'plots'
 fiber_map_file = data_dir / 'IFU' / 'fiber_map_20221018.csv'
 pipeline_root = repo_root / 'nirwals_pipeline'
+pipeline_config_file = pipeline_root / 'salt_pkgs' / 'configs' / 'nirwals' / 'science_reduce.json'
 
 
 os.makedirs(plot_dir, exist_ok=True)
 plot_ext_spectra_dir = os.path.join(plot_dir, 'NIRWALS_DRP_reduced_spectra')
 os.makedirs(plot_ext_spectra_dir, exist_ok=True)
 # -----------------------------------
+
+# the raw FITS GAIN header is unreliable (it's actually GAINSET, not a calibrated
+# e-/ADU value -- see nirwals_pipeline's science_reduce.json notes); read the same
+# gain_default nirwals_pipeline's own extraction uses, instead of the header
+with open(pipeline_config_file) as f:
+    PIPELINE_GAIN_DEFAULT = json.load(f)['extract']['gain_default']
 
 def load_fiber_map_dict(map_file=fiber_map_file, verbose=False):
     '''
@@ -130,7 +138,7 @@ def exposure_dict(filepath, product_type='science'):
             'exp_type': meta['EXPTYPE'],
             'exptime': hdr('EXPTIME'),
             'airmass': airmass, 
-            'gain': hdr('GAIN'),
+            'gain': PIPELINE_GAIN_DEFAULT,
             'grating_angle': hdr('GRRANGLE'),
             'pupil_start': hdr('PUPSTA'),
             'pupil_end': hdr('PUPEND'),
@@ -333,7 +341,7 @@ def plot_science_reduction_results(obs_date, outdir=plot_ext_spectra_dir, smooth
 
         ssc_wave, ssc_data, ssc_data_sigma = get_reduced_spectra(e, exposures)
         cf_wave = np.asarray(e['cf']['wave'], dtype=float)
-        cf_data = np.asarray(e['cf']['flux'], dtype=float)
+        cf_data = np.delete(np.asarray(e['cf']['flux'], dtype=float), sky_indices, axis=0)  # remove sky fibers (248 --> 212 fibers)
 
         # fiber axes must line up after sky removal
         assert a_data.shape[0] == ssc_data.shape[0] == cf_data.shape[0], \
