@@ -462,7 +462,7 @@ def parse_args():
 
     p.add_argument('--specphot-date', default=None,
                     help='YYYYMMDD of a spec-phot standard observation. If omitted, flux calibration and dither combination are both skipped.')
-    p.add_argument('--specphot-polyorder', type=int, default=3,
+    p.add_argument('--specphot-polyorder', type=int, default=6,
                     help='Continuum polynomial order for the spec-phot standard\'s self telluric correction with poly-model.')
 
     p.add_argument('--no-dithers', action='store_true',
