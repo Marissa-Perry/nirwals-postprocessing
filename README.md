@@ -45,7 +45,7 @@ Description of optional arguments:
 - `--specphot-date YYYYMMDD`: a reduced spectrophotometric-standard observation used for flux calibration. If omitted, flux calibration is skipped.
 - `--no-dithers`: Skips the dither combining step. Science target is auto-identified based on the highest exposure time. If there is more than one of these exposures, only the first is used.
 - `--telluric-standard-polyorder`: Continuum polynomial order for the star-model telluric fit.
-- `--specphot-polyorder`: Continuum polynomial order for the spec-phot standard\'s self telluric correction with poly-model.
+- `--specphot-polyorder`: Continuum polynomial order for the star-model telluric fit (for stellar template, using its Rayner+2009 reference spectrum).
 - `--target-polyorder`: Continuum polynomial order for the poly-model telluric fit, used when no telluric standard is given.
 
 Unless `--no-dithers` is passed, multiple science target exposures found for YYYYMMDD are treated as dithers. The dither offset pattern used for combination is read from `data/IFU/dither_pattern.csv`. This file must be edited directly to setup a different dither pattern.

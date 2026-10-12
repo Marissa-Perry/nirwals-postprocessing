@@ -10,7 +10,10 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from pypeit.core.telluric import Telluric, init_star_model, eval_star_model, init_poly_model, eval_poly_model
 from pypeit.core import standard, flux_calib
+from pypeit.core.spectrum import Spectrum
 from pathlib import Path
+
+from .flux_calibration import read_spec_phot_standard
 
 # -------- filepath params ----------
 this_dir = Path(__file__).resolve().parent     # .../post_reduction_processing/scripts
@@ -71,6 +74,17 @@ def query_star_properties(star_name):
 
     return star_properties_dict
 
+def rayner_std_spec(obj_name):
+    '''
+    Build a PypeIt Spectrum from a Rayner+2009 reference spectrum, for stars
+    outside PypeIt's Schmidt-Kaler spectral-type coverage.
+    '''
+    std = read_spec_phot_standard(obj_name)   # wave [vacuum A], flux [W/m^2/um]
+    props = query_star_properties(obj_name)   # for RA/Dec only
+    meta = {'ra_deg': props['ra'], 'dec_deg': props['dec'], 'Name': obj_name, 'File': 'Rayner+2009'}
+    flux = std['flux'] * 1e16   # W/m^2/um -> PypeIt's internal 1e-17 erg/s/cm^2/A convention
+    return Spectrum(std['wave'], flux, meta=meta)
+
 def to_schmidt_kaler_type(sp_type, valid=SCHMIDT_KALER_TYPES):
     '''
     Map a SIMBAD spectral type to the nearest entry in PypeIt's Schmidt-Kaler table. 
@@ -100,21 +114,22 @@ def to_schmidt_kaler_type(sp_type, valid=SCHMIDT_KALER_TYPES):
     return nearest
 
 def fit_telluric_star_model(star_flux, star_wave, star_ivar, star_gpm, star_props, airmass, exptime,
-                            resln_guess, resln_frac_bounds, telgridfile=TELLPCA_FILE, 
-                            polyorder=8, sn_clip=30.0, maxiter=3, pix_shift_bounds=(-10.0, 10.0), 
-                            pix_stretch_bounds=(0.95, 1.05), hydrogen_mask_wid=35., disp=False):
+                            resln_guess, resln_frac_bounds, telgridfile=TELLPCA_FILE,
+                            polyorder=8, sn_clip=30.0, maxiter=3, pix_shift_bounds=(-10.0, 10.0),
+                            pix_stretch_bounds=(0.95, 1.05), hydrogen_mask_wid=35., disp=False, std_spec=None):
     '''
     Fit PypeIt's star object model + telluric transmission to a standard star.
     Uses pypeit.core.telluric.star_telluric method, but with arrays instead of a spec1dfile.
-    Generates a Kurucz stellar model for a given apparent magnitude and spectral type. 
+    Generates a Kurucz stellar model for a given apparent magnitude and spectral type.
     If these two properties are not provided, falls back on using RA and DEC to retrieve an archival standard spectrum (list: ['xshooter' 'calspec' 'esofil' 'noao' 'ing']).
+    std_spec, if given, is used directly as the star's true spectrum instead.
 
     Returns dict with 'transmission', 'star_model', 'TelObj', 'mask_recomb', fit params
     '''
-    star_type = to_schmidt_kaler_type(star_props['sp_type'])
-
-    # standard-star SED model
-    std_spec = standard.get_standard_spectrum(spectral_type=star_type, V_mag=star_props['v_mag'], ra=star_props['ra'], dec=star_props['dec'])
+    star_type = None
+    if std_spec is None:
+        star_type = to_schmidt_kaler_type(star_props['sp_type'])
+        std_spec = standard.get_standard_spectrum(spectral_type=star_type, V_mag=star_props['v_mag'], ra=star_props['ra'], dec=star_props['dec'])
 
     polyorder_vec = np.full(1, polyorder)
     obj_params = dict(
@@ -319,7 +334,7 @@ def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=p
     ax1.set_xlim(np.nanmin(wave_m), np.nanmax(wave_m))
     if ylim is not None:
         ax1.set_ylim(*ylim)
-    ax1.legend(fontsize=10, loc='upper right')
+    ax1.legend(fontsize=10, loc='lower left')
     # ax1.text(0.02, 0.92, 'masked H recombination lines', transform=ax1.transAxes, fontsize=9, color='0.3')
 
     # --- middle: residuals ---

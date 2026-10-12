@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 
 from ..scripts.get_NIRWALS_DRP_products import (get_reduced_exposures, get_reduced_spectra, plot_science_reduction_results, plot_ext_spectra_dir, load_fiber_map_dict)
-from ..scripts.telluric_correction import (query_star_properties, fit_telluric_star_model, fit_telluric_poly_model, apply_telluric_model, plot_star_telluric_model_fit, plot_poly_telluric_model_fit, plot_telluric_correction)
+from ..scripts.telluric_correction import (query_star_properties, rayner_std_spec, fit_telluric_star_model, fit_telluric_poly_model, apply_telluric_model, plot_star_telluric_model_fit, plot_poly_telluric_model_fit, plot_telluric_correction)
 from ..scripts.flux_calibration import (compute_throughput, save_throughput, flux_calibrate_exposure, plot_throughput_fit, plot_throughput_validation, plot_flux_calibration, processed_data_dir)
 from ..scripts.dither_combine import (combine_dithers, plot_fiber_map, plot_cube_image, plot_coadded_spectrum, clip_edges_mask)
 from ..scripts.data_products import write_postprocessed_fits, write_1d_fits
@@ -153,11 +153,12 @@ def coadd_bright_fibers_with_ivar(flux_all, sigma_all, frac=0.2):
 # ----------------------------------------------------------------------
 # telluric correction
 # ----------------------------------------------------------------------
-def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder=8, disp=False, plot=True, obs_date=None):
+def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder=8, disp=False, plot=True, obs_date=None, std_spec=None):
     """
     Star-model telluric fit to a co-added telluric-standard star spectrum.
+    std_spec, if given, is used as the star's true spectrum instead of a SIMBAD/Schmidt-Kaler lookup.
     """
-    star_props = query_star_properties(standard_name)
+    star_props = None if std_spec is not None else query_star_properties(standard_name)
     wave, flux_all, sigma_all = get_reduced_spectra(standard_exp, standard_exposures)
     flux, sigma, ivar, gpm = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
     gpm = gpm & clip_edges_mask(wave)   # trim detector edges (same clip applied to the final product for target)
@@ -165,12 +166,12 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
     upper_specres_frac = max(standard_exp['ssc']['spec_res']) / median_specres  # fractional bound edges for model
     lower_specres_frac = min(standard_exp['ssc']['spec_res']) / median_specres  # ''
 
-    fit = fit_telluric_star_model(flux, wave, ivar, gpm, star_props, 
-                                  standard_exp['airmass'], standard_exp['exptime'], 
-                                  resln_guess=median_specres,    
+    fit = fit_telluric_star_model(flux, wave, ivar, gpm, star_props,
+                                  standard_exp['airmass'], standard_exp['exptime'],
+                                  resln_guess=median_specres,
                                   resln_frac_bounds=(lower_specres_frac, upper_specres_frac),
-                                  polyorder=polyorder, disp=disp)
-    
+                                  polyorder=polyorder, disp=disp, std_spec=std_spec)
+
     if plot:
         plot_star_telluric_model_fit(wave, flux, fit, standard_exp, obs_date=obs_date, show=False)
 
@@ -293,8 +294,9 @@ def get_throughput_file(sci_exposures, args, plot=True):
     print()
 
     print(f'\n\nFlux calibration: self-correcting spec-phot standard {specphot_name} ({args.specphot_date}) '
-          'with PypeIt poly model, then computing throughput', end='\n\n')
-    specphot_fit = fit_telluric_poly(specphot_exp, specphot_exposures, polyorder=args.specphot_polyorder, obs_date=args.obs_date)
+          'with PypeIt star model (Rayner+2009 spectrum), then computing throughput', end='\n\n')
+    std_spec = rayner_std_spec(specphot_name)   # real spectrum in place of a Schmidt-Kaler lookup
+    specphot_fit = fit_telluric_star(specphot_exp, specphot_name, specphot_exposures, polyorder=args.specphot_polyorder, obs_date=args.obs_date, std_spec=std_spec)
 
     flux_dtype = specphot_exp['flux'].dtype
     # object-fiber-only flux/sigma, on a common wavelength grid
@@ -462,8 +464,8 @@ def parse_args():
 
     p.add_argument('--specphot-date', default=None,
                     help='YYYYMMDD of a spec-phot standard observation. If omitted, flux calibration and dither combination are both skipped.')
-    p.add_argument('--specphot-polyorder', type=int, default=6,
-                    help='Continuum polynomial order for the spec-phot standard\'s self telluric correction with poly-model.')
+    p.add_argument('--specphot-polyorder', type=int, default=8,
+                    help='Continuum polynomial order for the spec-phot standard\'s self telluric correction with star-model.')
 
     p.add_argument('--no-dithers', action='store_true',
                     help='Use only the first exposure instead of combining all dithered exposures. A single-exposure cube is still built and written as the usual combined outputs (cube + 1D + plots).')
