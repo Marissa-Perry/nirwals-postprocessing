@@ -151,8 +151,12 @@ def fit_telluric_star_model(star_flux, star_wave, star_ivar, star_gpm, star_prop
     )
 
     # mask bad pixels + stellar hydrogen recombination lines
+    if hydrogen_mask_wid == 0:
+        mask_hydrogen_lines = False
+    else:
+        mask_hydrogen_lines = True
     mask_bad, mask_recomb, mask_tell = flux_calib.get_mask(star_wave, star_flux, star_ivar, star_gpm,
-                                                           mask_hydrogen_lines=True, mask_helium_lines=False,
+                                                           mask_hydrogen_lines=mask_hydrogen_lines, mask_helium_lines=False,
                                                            mask_telluric=False, hydrogen_mask_wid=hydrogen_mask_wid)
     mask_tot = mask_bad & mask_recomb & mask_tell
 
@@ -328,8 +332,8 @@ def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=p
 
     # --- top: obs + models ---
     ax1.step(star_wave, star_flux, where='mid', color='black', lw=0.8, label='observed', zorder=1)
-    ax1.step(wave_m, star_model, where='mid', color='#a2d2ff', lw=1.5, ls='dashed', label=r'star model', zorder=2)
-    ax1.step(wave_m, full_model, where='mid', color='#0077b6', lw=1.2, label=r'star $\times$ tellurics (full model)', zorder=3)
+    ax1.step(wave_m, star_model, where='mid', color='#94d2bd', lw=1.5, ls='dashed', label=r'star model', zorder=2)
+    ax1.step(wave_m, full_model, where='mid', color='#0a9396', lw=1.2, label=r'star $\times$ tellurics (full model)', zorder=3)
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
     ax1.set_xlim(np.nanmin(wave_m), np.nanmax(wave_m))
     if ylim is not None:
@@ -345,7 +349,7 @@ def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, savepath=p
     ax2.axhline(0, color='#0077b6', lw=1.5, zorder=0)
 
     # --- bottom: fitted transmission ---
-    ax3.fill_between(wave_m, T, step='mid', color='grey', alpha=0.7, zorder=1)
+    ax3.fill_between(wave_m, T, step='mid', color='grey', alpha=0.2, zorder=1)
     ax3.step(wave_m, T, where='mid', color='black', lw=0.6, zorder=2)
     ax3.set_ylim(-0.01, 1.1)
     ax3.set_ylabel('transmission', fontsize=9, labelpad=27)

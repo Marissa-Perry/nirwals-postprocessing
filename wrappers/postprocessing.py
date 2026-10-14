@@ -153,7 +153,7 @@ def coadd_bright_fibers_with_ivar(flux_all, sigma_all, frac=0.2):
 # ----------------------------------------------------------------------
 # telluric correction
 # ----------------------------------------------------------------------
-def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder=8, disp=False, plot=True, obs_date=None, std_spec=None):
+def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder=8, hydrogen_mask_wid=35., disp=False, plot=True, obs_date=None, std_spec=None):
     """
     Star-model telluric fit to a co-added telluric-standard star spectrum.
     std_spec, if given, is used as the star's true spectrum instead of a SIMBAD/Schmidt-Kaler lookup.
@@ -170,7 +170,7 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
                                   standard_exp['airmass'], standard_exp['exptime'],
                                   resln_guess=median_specres,
                                   resln_frac_bounds=(lower_specres_frac, upper_specres_frac),
-                                  polyorder=polyorder, disp=disp, std_spec=std_spec)
+                                  polyorder=polyorder, hydrogen_mask_wid=hydrogen_mask_wid, disp=disp, std_spec=std_spec)
 
     if plot:
         plot_star_telluric_model_fit(wave, flux, fit, standard_exp, obs_date=obs_date, show=False)
@@ -295,8 +295,8 @@ def get_throughput_file(sci_exposures, args, plot=True):
 
     print(f'\n\nFlux calibration: self-correcting spec-phot standard {specphot_name} ({args.specphot_date}) '
           'with PypeIt star model (Rayner+2009 spectrum), then computing throughput', end='\n\n')
-    std_spec = rayner_std_spec(specphot_name)   # real spectrum in place of a Schmidt-Kaler lookup
-    specphot_fit = fit_telluric_star(specphot_exp, specphot_name, specphot_exposures, polyorder=args.specphot_polyorder, obs_date=args.obs_date, std_spec=std_spec)
+    std_spec = rayner_std_spec(specphot_name)   # real spectrum in place of a Schmidt-Kaler lookup                                               no masking of hydrogen lines (Rayner spectrum captures them, unlike Pypeit spectra)
+    specphot_fit = fit_telluric_star(specphot_exp, specphot_name, specphot_exposures, polyorder=args.specphot_polyorder, obs_date=args.obs_date, std_spec=std_spec, hydrogen_mask_wid=0)
 
     flux_dtype = specphot_exp['flux'].dtype
     # object-fiber-only flux/sigma, on a common wavelength grid
