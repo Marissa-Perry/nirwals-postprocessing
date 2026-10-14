@@ -34,58 +34,69 @@ DIAM_CORES_ARCSEC = 1.326
 GAUSSIAN_SIGMA_PIXELS = 1.1 / OUT_ARCSEC_PER_PIXEL
 RLIM_PIXELS = 1.5 / OUT_ARCSEC_PER_PIXEL
 
-# edge flux-deviation check: local-plateau window geometry, the deviation threshold (in
-# robust sigma, via MAD) flux must stay inside, and the median-filter size used to keep
-# single noisy columns from interrupting the scan
-EDGE_PLATEAU_WINDOW = 250
-EDGE_PLATEAU_MARGIN = 70
-EDGE_SIGMA_THRESH = 3.0
+# edge flux-deviation check: how far past each edge to look for a stable interior plateau,
+# the max fractional deviation from it allowed, how many consecutive columns must satisfy
+# that before the scan stops, and the median-filter size so single noisy columns can't
+# interrupt the scan or bias the plateau
+EDGE_INTERIOR_MARGIN = 350
+EDGE_DEV_FRAC = 0.20
+EDGE_SUSTAIN_RUN = 30
 EDGE_SMOOTH_SIZE = 9
 
 
-def _edge_flux_trim(flux_smooth, start, direction, window=EDGE_PLATEAU_WINDOW, margin=EDGE_PLATEAU_MARGIN,
-                     sigma_thresh=EDGE_SIGMA_THRESH):
+def _edge_flux_trim(flux_smooth, start, direction, plateau, dev_frac=EDGE_DEV_FRAC, sustain=EDGE_SUSTAIN_RUN):
     """
     From column `start`, scanning inward by `direction` (+1 from the blue edge, -1 from
-    the red edge), count how many columns deviate from the local plateau -- the median of
-    a window `margin` columns further inward still, in the same direction, so the plateau
-    is measured from presumably-good data on the far side of the deviating region -- by
-    more than sigma_thresh robust-sigma (1.4826 x MAD, scaled to match a Gaussian sigma).
-    A fixed fraction of the plateau level was tried first and rejected: the genuine
-    plateau's own scatter is tight (~6-10% of its median in exposures checked), so a loose
-    round-number band like 0.5-1.5x plateau missed real edge artifacts sitting at 3-7
-    sigma, while only a few percent deviation is already a meaningful outlier here.
-    Stops at the first column back inside the band.
+    the red edge), find the first run of `sustain` consecutive columns all within
+    dev_frac of `plateau`, and return how many columns were trimmed to reach the start of
+    that run. A single lucky column can't stop the scan early -- real edge artifacts seen
+    in practice decay gradually over 100+ columns, not as a sharp step, so requiring a
+    sustained run (rather than just the first in-band column) matters here. If no such run
+    is ever found, trims everything scanned.
     """
     n = flux_smooth.size
-    if direction > 0:
-        win_lo = min(start + margin, n)
-        win_hi = min(win_lo + window, n)
-    else:
-        win_hi = max(start - margin, 0)
-        win_lo = max(win_hi - window, 0)
-    plateau_window = flux_smooth[win_lo:win_hi]
-    if plateau_window.size == 0:
-        return 0
-    med = np.median(plateau_window)
-    robust_sigma = 1.4826 * np.median(np.abs(plateau_window - med))
-    lo, hi = med - sigma_thresh * robust_sigma, med + sigma_thresh * robust_sigma
-
-    n_trim = 0
     idx = start
+    run_start = start
+    run_len = 0
     while 0 <= idx < n:
-        v = flux_smooth[idx]
-        if v < lo or v > hi:
-            n_trim += 1
-            idx += direction
+        dev = abs(flux_smooth[idx] / plateau - 1.0)
+        if dev < dev_frac:
+            if run_len == 0:
+                run_start = idx
+            run_len += 1
+            if run_len >= sustain:
+                return abs(run_start - start)
         else:
-            break
-    return n_trim
+            run_len = 0
+        idx += direction
+    return abs(idx - start)
 
 
 def clip_edges_mask(wave, flux, ivar, blue_clip_px=PIPELINE_BLUE_CLIP_PX, fiber_frac=PIPELINE_FIBER_FRAC):
     """
     Used to trim the dead instrument edges off the saved 1D and 2D spectra.
+
+    Blue: fixed blue_clip_px columns, matching the common-grid padding every exposure gets
+    in nirwalsreduce.py -- no fibre has real data there, so this is exact and the same for
+    every grating setting, unlike a fixed wavelength budget (confirmed: good-pixel
+    fraction is identically zero for exactly this many columns in every exposure checked,
+    across 4 different grating angles spanning Y/J/H).
+
+    Red: the last column where at least fiber_frac of fibres have both ivar > 0 and a
+    nonzero flux (ivar alone isn't enough -- it can stay positive past a fibre's native
+    coverage even though its flux is identically zero there).
+
+    Past each of those, both edges can still carry a real flux bias from telluric opacity
+    rising toward the edge of each band's atmospheric window (confirmed against the
+    fitted telluric transmission model: dense, deep absorption sets in right where the
+    flux deviates) -- not a sharp spike, but a gradual decay over 100-300+ columns, so
+    neither edge's own nearby data makes a reliable baseline to compare against on its
+    own (checked and rejected: comparing to a small nearby window is unstable, since nearby
+    columns can themselves still be somewhat biased). Both edges are instead trimmed
+    forward to the first sustained run of EDGE_SUSTAIN_RUN columns within EDGE_DEV_FRAC of
+    one shared plateau -- the median flux over the deep interior, EDGE_INTERIOR_MARGIN
+    columns past each of the above edges, which is far enough in to be stable and
+    unaffected by either edge's own bias.
     """
     flux2d = np.atleast_2d(flux)
     ivar2d = np.atleast_2d(ivar)
@@ -104,8 +115,14 @@ def clip_edges_mask(wave, flux, ivar, blue_clip_px=PIPELINE_BLUE_CLIP_PX, fiber_
         flux_1d = np.nanmedian(np.where(flux2d != 0, flux2d, np.nan), axis=0)
     flux_smooth = median_filter(np.nan_to_num(flux_1d), size=EDGE_SMOOTH_SIZE, mode='nearest')
 
-    n_blue_flux = _edge_flux_trim(flux_smooth, blue_clip_px, +1)
-    n_red_flux = _edge_flux_trim(flux_smooth, flux_smooth.size - 1, -1)
+    n = flux_smooth.size
+    interior_lo = min(blue_clip_px + EDGE_INTERIOR_MARGIN, n)
+    interior_hi = max(n - n_red_coverage - EDGE_INTERIOR_MARGIN, interior_lo)
+    interior = flux_smooth[interior_lo:interior_hi]
+    plateau = np.median(interior) if interior.size else np.median(flux_smooth)
+
+    n_blue_flux = _edge_flux_trim(flux_smooth, blue_clip_px, +1, plateau)
+    n_red_flux = _edge_flux_trim(flux_smooth, n - 1, -1, plateau)
 
     n_blue = blue_clip_px + n_blue_flux
     n_red = max(n_red_coverage, n_red_flux)
