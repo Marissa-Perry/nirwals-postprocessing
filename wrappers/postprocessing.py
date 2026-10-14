@@ -161,7 +161,7 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
     star_props = None if std_spec is not None else query_star_properties(standard_name)
     wave, flux_all, sigma_all = get_reduced_spectra(standard_exp, standard_exposures)
     flux, sigma, ivar, gpm = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
-    gpm = gpm & clip_edges_mask(wave)   # trim detector edges (same clip applied to the final product for target)
+    gpm = gpm & clip_edges_mask(wave, flux, ivar)   # trim detector edges (same clip applied to the final product for target)
     median_specres = np.median(standard_exp['ssc']['spec_res'])   # get the median spectral resolution for center of model bounds
     upper_specres_frac = max(standard_exp['ssc']['spec_res']) / median_specres  # fractional bound edges for model
     lower_specres_frac = min(standard_exp['ssc']['spec_res']) / median_specres  # ''
@@ -173,7 +173,7 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
                                   polyorder=polyorder, hydrogen_mask_wid=hydrogen_mask_wid, disp=disp, std_spec=std_spec)
 
     if plot:
-        plot_star_telluric_model_fit(wave, flux, fit, standard_exp, obs_date=obs_date, show=False)
+        plot_star_telluric_model_fit(wave, flux, fit, standard_exp, star_sigma=sigma, obs_date=obs_date, show=False)
 
     return fit
 
@@ -184,7 +184,7 @@ def fit_telluric_poly(target_exp, target_exposures, polyorder=3, disp=False, plo
     """
     wave, flux_all, sigma_all = get_reduced_spectra(target_exp, target_exposures)
     flux, sigma, ivar, gpm = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
-    gpm = gpm & clip_edges_mask(wave)   # trim detector edges (same clip applied to the final product for target)
+    gpm = gpm & clip_edges_mask(wave, flux, ivar)   # trim detector edges (same clip applied to the final product for target)
     median_specres = np.median(target_exp['ssc']['spec_res'])   # get the median spectral resolution for center of model bounds
     upper_specres_frac = max(target_exp['ssc']['spec_res']) / median_specres  # fractional bound edges for model
     lower_specres_frac = min(target_exp['ssc']['spec_res']) / median_specres  # ''
@@ -196,7 +196,7 @@ def fit_telluric_poly(target_exp, target_exposures, polyorder=3, disp=False, plo
                                   resln_frac_bounds=(lower_specres_frac, upper_specres_frac),
                                   polyorder=polyorder, disp=disp)
     if plot:
-        plot_poly_telluric_model_fit(wave, flux, fit, target_exp, obs_date=obs_date, show=False)
+        plot_poly_telluric_model_fit(wave, flux, fit, target_exp, star_sigma=sigma, obs_date=obs_date, show=False)
     return fit
 
 
@@ -327,9 +327,9 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
  
     tcorr_1d = tcorr_sigma_1d = None
     if plot:
-        raw_1d, _, _, _ = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
+        raw_1d, raw_sigma_1d, _, _ = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
         tcorr_1d, tcorr_sigma_1d, _, _ = coadd_bright_fibers_with_ivar(tcorr['flux'], tcorr['sigma'])
-        plot_telluric_correction(wave, raw_1d, tcorr_1d, sci_exp, obs_date=obs_date, show=False)
+        plot_telluric_correction(wave, raw_1d, tcorr_1d, sci_exp, raw_sigma=raw_sigma_1d, corr_sigma=tcorr_sigma_1d, obs_date=obs_date, show=False)
  
     if throughput_file is not None:
         flux, sigma = flux_calibrate_exposure(wave, tcorr['flux'], tcorr['sigma'], sci_exp, throughput_file)
@@ -431,7 +431,9 @@ def write_combined_outputs(combined, obs_date, throughput_file, plot=True):
     # 2D product (row-stacked spectra + cube)
     write_postprocessed_fits(combined, str(out_2d), throughput_file=throughput_file)
 
-    keep = clip_edges_mask(combined['wave'])
+    with np.errstate(divide='ignore'):
+        ivar_1d = np.where(np.isfinite(sigma_1d) & (sigma_1d > 0), 1.0 / sigma_1d**2, 0.0)
+    keep = clip_edges_mask(combined['wave'], flux_1d, ivar_1d)
     nwave = combined['wave'].size
     wl_bits = np.zeros(nwave, dtype=np.int32)
     if combined.get('mask_all') is not None:

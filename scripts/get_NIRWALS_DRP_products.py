@@ -33,7 +33,12 @@ os.makedirs(plot_ext_spectra_dir, exist_ok=True)
 # e-/ADU value -- see nirwals_pipeline's science_reduce.json notes); read the same
 # gain_default nirwals_pipeline's own extraction uses, instead of the header
 with open(pipeline_config_file) as f:
-    PIPELINE_GAIN_DEFAULT = json.load(f)['extract']['gain_default']
+    _pipeline_config = json.load(f)
+PIPELINE_GAIN_DEFAULT = _pipeline_config['extract']['gain_default']
+# pixels of dead blue edge 
+PIPELINE_BLUE_CLIP_PX = _pipeline_config['wavelength']['extend']
+# same fibre-coverage fraction from continuum-fit skyline masking, reused for the red-edge trim
+PIPELINE_FIBER_FRAC = _pipeline_config['continuum']['gpm']['threshold']['fiber_frac']
 
 def load_fiber_map_dict(map_file=fiber_map_file, verbose=False):
     '''

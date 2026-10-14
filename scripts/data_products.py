@@ -4,7 +4,7 @@ import pandas as pd
 from astropy.io import fits
 
 from .bitmask import MASK_DONOTUSE, write_maskbits_header
-from .dither_combine import clip_edges_mask, CLIP_WAVE_BLUE_RANGE, CLIP_WAVE_RED_RANGE
+from .dither_combine import clip_edges_mask
 
 
 # ----- shared HDU helpers --------------------------------------------------- #
@@ -80,9 +80,10 @@ def write_postprocessed_fits(combined, out_file, throughput_file=None):
     ref = combined['exp']['ssc']['sci_header']
     bunit = 'erg/s/cm2/A' if throughput_file else 'counts/s'
 
-    keep = clip_edges_mask(combined['wave'])
+    ivar_all = ivar_from_sigma(combined['sigma_all'], combined.get('mask_all'))
+    keep = clip_edges_mask(combined['wave'], combined['flux_all'], ivar_all)
     if not keep.any():
-        raise ValueError(f'edge clip [{CLIP_WAVE_BLUE_RANGE}, {CLIP_WAVE_RED_RANGE}] A keeps no wavelengths')
+        raise ValueError('edge clip keeps no wavelengths')
     i0 = int(np.argmax(keep))
     wave = combined['wave'][keep]
     has_mask = combined.get('mask_all') is not None
@@ -93,7 +94,9 @@ def write_postprocessed_fits(combined, out_file, throughput_file=None):
     pri.header['NDITHER'] = (combined.get('n_dither', 1), 'number of combined dithered exposures')
     pri.header['NWAVE'] = (int(keep.sum()), 'number of wavelength pixels')
     pri.header['NFIBER'] = (int(combined['flux_all'].shape[0]), 'total fiber rows (NFIBER_PER_EXP * NEXP)')
-    pri.header.add_history(f'Edge-clipped: {CLIP_WAVE_BLUE_RANGE:.0f} A blue, {CLIP_WAVE_RED_RANGE:.0f} A red')
+    n_blue_clipped = int(np.argmax(keep))
+    n_red_clipped = int(np.argmax(keep[::-1]))
+    pri.header.add_history(f'Edge-clipped: {n_blue_clipped} px blue (common-grid padding), {n_red_clipped} px red (no fibre coverage)')
     pri.header.add_history('Primary product: per-fiber spectra (telluric-corrected'
                            + (', flux-calibrated)' if throughput_file else ')'))
     hdus = [pri]

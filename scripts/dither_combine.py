@@ -4,6 +4,7 @@ Originally written by Antoine Mahoro for combining dithered NIRWALS observations
 Combines one or more exposures into a single datacube. 
 """
 import os
+import warnings
 import numpy as np
 import pandas as pd
 
@@ -14,9 +15,10 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 from matplotlib.patches import Circle
 from astropy.visualization import ImageNormalize, ZScaleInterval
+from scipy.ndimage import median_filter
 
 from . import cube_ifu
-from .get_NIRWALS_DRP_products import data_dir, plot_dir
+from .get_NIRWALS_DRP_products import data_dir, plot_dir, PIPELINE_BLUE_CLIP_PX, PIPELINE_FIBER_FRAC
 
 plot_dither_dir = plot_dir / 'combined_dithers'
 os.makedirs(plot_dither_dir, exist_ok=True)
@@ -32,16 +34,88 @@ DIAM_CORES_ARCSEC = 1.326
 GAUSSIAN_SIGMA_PIXELS = 1.1 / OUT_ARCSEC_PER_PIXEL
 RLIM_PIXELS = 1.5 / OUT_ARCSEC_PER_PIXEL
 
-# clipping edges of data
-CLIP_WAVE_BLUE_RANGE = 50  # [A]
-CLIP_WAVE_RED_RANGE = 50   # [A]
+# edge flux-deviation check: local-plateau window geometry, the deviation threshold (in
+# robust sigma, via MAD) flux must stay inside, and the median-filter size used to keep
+# single noisy columns from interrupting the scan
+EDGE_PLATEAU_WINDOW = 250
+EDGE_PLATEAU_MARGIN = 70
+EDGE_SIGMA_THRESH = 3.0
+EDGE_SMOOTH_SIZE = 9
 
 
-def clip_edges_mask(wave, blue_wav_clip=CLIP_WAVE_BLUE_RANGE, red_wav_clip=CLIP_WAVE_RED_RANGE):
+def _edge_flux_trim(flux_smooth, start, direction, window=EDGE_PLATEAU_WINDOW, margin=EDGE_PLATEAU_MARGIN,
+                     sigma_thresh=EDGE_SIGMA_THRESH):
+    """
+    From column `start`, scanning inward by `direction` (+1 from the blue edge, -1 from
+    the red edge), count how many columns deviate from the local plateau -- the median of
+    a window `margin` columns further inward still, in the same direction, so the plateau
+    is measured from presumably-good data on the far side of the deviating region -- by
+    more than sigma_thresh robust-sigma (1.4826 x MAD, scaled to match a Gaussian sigma).
+    A fixed fraction of the plateau level was tried first and rejected: the genuine
+    plateau's own scatter is tight (~6-10% of its median in exposures checked), so a loose
+    round-number band like 0.5-1.5x plateau missed real edge artifacts sitting at 3-7
+    sigma, while only a few percent deviation is already a meaningful outlier here.
+    Stops at the first column back inside the band.
+    """
+    n = flux_smooth.size
+    if direction > 0:
+        win_lo = min(start + margin, n)
+        win_hi = min(win_lo + window, n)
+    else:
+        win_hi = max(start - margin, 0)
+        win_lo = max(win_hi - window, 0)
+    plateau_window = flux_smooth[win_lo:win_hi]
+    if plateau_window.size == 0:
+        return 0
+    med = np.median(plateau_window)
+    robust_sigma = 1.4826 * np.median(np.abs(plateau_window - med))
+    lo, hi = med - sigma_thresh * robust_sigma, med + sigma_thresh * robust_sigma
+
+    n_trim = 0
+    idx = start
+    while 0 <= idx < n:
+        v = flux_smooth[idx]
+        if v < lo or v > hi:
+            n_trim += 1
+            idx += direction
+        else:
+            break
+    return n_trim
+
+
+def clip_edges_mask(wave, flux, ivar, blue_clip_px=PIPELINE_BLUE_CLIP_PX, fiber_frac=PIPELINE_FIBER_FRAC):
     """
     Used to trim the dead instrument edges off the saved 1D and 2D spectra.
     """
-    return (wave >= wave.min() + blue_wav_clip) & (wave <= wave.max() - red_wav_clip)
+    flux2d = np.atleast_2d(flux)
+    ivar2d = np.atleast_2d(ivar)
+    coverage = np.mean((ivar2d > 0) & (flux2d != 0), axis=0)
+    has_data = coverage >= fiber_frac
+
+    n_red_coverage = 0
+    for v in has_data[::-1]:
+        if not v:
+            n_red_coverage += 1
+        else:
+            break
+
+    with np.errstate(invalid='ignore'), warnings.catch_warnings():
+        warnings.simplefilter('ignore', category=RuntimeWarning)  # all-NaN columns are expected past the coverage edge
+        flux_1d = np.nanmedian(np.where(flux2d != 0, flux2d, np.nan), axis=0)
+    flux_smooth = median_filter(np.nan_to_num(flux_1d), size=EDGE_SMOOTH_SIZE, mode='nearest')
+
+    n_blue_flux = _edge_flux_trim(flux_smooth, blue_clip_px, +1)
+    n_red_flux = _edge_flux_trim(flux_smooth, flux_smooth.size - 1, -1)
+
+    n_blue = blue_clip_px + n_blue_flux
+    n_red = max(n_red_coverage, n_red_flux)
+
+    keep = np.ones(wave.shape, dtype=bool)
+    keep[:n_blue] = False
+    if n_red > 0:
+        keep[-n_red:] = False
+
+    return keep
 
 
 def load_astrometry(astrometry_file=ASTROMETRY_FILE):
@@ -297,7 +371,9 @@ def plot_coadded_spectrum(combined, flux_1d, sigma_1d, obs_date, savepath=plot_d
     """
     n_dither = combined.get('n_dither', 1)
     wave = combined['wave']
-    keep = clip_edges_mask(wave)                   # edges outside this are clipped from the FITS
+    with np.errstate(divide='ignore'):
+        ivar_1d = np.where(np.isfinite(sigma_1d) & (sigma_1d > 0), 1.0 / sigma_1d**2, 0.0)
+    keep = clip_edges_mask(wave, flux_1d, ivar_1d)  # edges outside this are clipped from the FITS
     flux_keep = np.where(keep, flux_1d, np.nan)    # kept region only (clipped -> NaN so it's not drawn black)
 
     fig, ax = plt.subplots(figsize=(8, 3))
@@ -305,8 +381,9 @@ def plot_coadded_spectrum(combined, flux_1d, sigma_1d, obs_date, savepath=plot_d
         ax.set_title(f'{extract_info.get("method", "co-add")}: reff = {extract_info["radius"]:.1f}", {n_dither} exposures', fontsize=12, pad=15)
         # ax.set_title(f'fiber co-add: reff = {extract_info["radius"]:.1f}", {n_dither} exposures', fontsize=12, pad=15)
     # shade + draw the clipped edges in light red (excluded from the FITS); kept region over-plotted in black
-    ax.axvspan(wave.min(), wave.min() + CLIP_WAVE_BLUE_RANGE, color='lightcoral', alpha=0.12, zorder=0)
-    ax.axvspan(wave.max() - CLIP_WAVE_RED_RANGE, wave.max(), color='lightcoral', alpha=0.12, zorder=0)
+    kept_wave = wave[keep]
+    ax.axvspan(wave.min(), kept_wave.min() if kept_wave.size else wave.max(), color='lightcoral', alpha=0.12, zorder=0)
+    ax.axvspan(kept_wave.max() if kept_wave.size else wave.min(), wave.max(), color='lightcoral', alpha=0.12, zorder=0)
     ax.step(wave, flux_1d, where='mid', color='lightcoral', linewidth=0.5, zorder=1)
     ax.step(wave, flux_keep, where='mid', color='black', linewidth=0.5, zorder=2)
     ax.fill_between(wave, flux_keep-sigma_1d, flux_keep+sigma_1d, step='mid', color='grey', alpha=0.6, zorder=0)
