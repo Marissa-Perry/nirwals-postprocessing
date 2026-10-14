@@ -188,9 +188,9 @@ def plot_throughput_validation(result, obj_dict, savepath=plot_flux_cal_dir, obs
     ax1.step(r['wave'], rflux_cut, where='mid', color='black',  lw=0.8, linestyle='dashed', label='reference (Rayner+2009)')
 
     ax1.set_ylabel('Flux [J/pixel]', fontsize=12, labelpad=15)
-    ax1.set_ylim(np.nanpercentile(std_cal, 0.5), np.nanpercentile(std_cal, 99.9))
+    ax1.set_ylim(min(rflux_cut) * 0.95, max(rflux_cut) * 1.005)
     ax1.tick_params(axis='both', labelsize=8)
-    ax1.legend(fontsize=9, loc='upper right')
+    ax1.legend(fontsize=9, loc='lower left')
     ax1.set_title(r['std_name'], fontsize=12, pad=12)
     ax2.scatter(r['wave'], ratio, marker='o', s=0.1, color='black', zorder=1)
     ax2.axhline(1, color='grey', lw=1, zorder=0)
@@ -326,7 +326,7 @@ def plot_flux_calibration(wave, counts, counts_err, flux_cal, flux_cal_err, gpcn
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
     finite_c = counts[np.isfinite(counts)]
     if finite_c.size:
-        ax1.set_ylim(np.percentile(finite_c, 0.5), np.max(finite_c)+np.percentile(finite_c, 0.5))
+        ax1.set_ylim(np.percentile(finite_c, 0.5) * 1.2, np.max(finite_c)+np.percentile(finite_c, 0.5) * 1.30)
     ax1.legend(fontsize=11, loc='upper right')
 
     # middle: flux calibrated
@@ -336,7 +336,7 @@ def plot_flux_calibration(wave, counts, counts_err, flux_cal, flux_cal_err, gpcn
     ax2.set_xlabel(r'Observed Wavelength [$\AA$]', fontsize=13, labelpad=15)
     finite_f = flux_cal[np.isfinite(flux_cal)]
     if finite_f.size:
-        ax2.set_ylim(np.percentile(finite_f, 0.5), np.max(finite_f)+np.percentile(finite_f, 0.5))
+        ax2.set_ylim(np.percentile(finite_f, 0.5) * 1.2, np.max(finite_f)+np.percentile(finite_f, 0.5) * 1.30)
     ax2.legend(fontsize=11, loc='upper right')
 
     # bottom: good pixel counts
