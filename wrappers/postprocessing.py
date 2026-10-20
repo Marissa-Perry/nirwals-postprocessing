@@ -457,7 +457,7 @@ def parse_args():
 
     p.add_argument('--telluric-standard-date', default=None,
                     help='YYYYMMDD a telluric-standard star was observed on (same night as obs_date if equal to it). Omit to fit the science target\'s own spectrum instead.')
-    p.add_argument('--telluric-standard-polyorder', type=int, default=8,
+    p.add_argument('--telluric-standard-polyorder', type=int, default=10,
                     help='Continuum polynomial order for the star-model telluric fit.')
     p.add_argument('--target-polyorder', type=int, default=3,
                     help='Continuum polynomial order for the poly-model telluric fit, used when no telluric standard is given.')
