@@ -343,7 +343,7 @@ def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, star_sigma
     if ylim is not None:
         ax1.set_ylim(*ylim)
     else:
-        ax1.set_ylim(min(full_model) * 0.90, max(star_model) * 1.10)
+        ax1.set_ylim(min(full_model) * 0.95, max(star_model) * 1.05)
     ax1.legend(fontsize=10, loc='lower left')
     # ax1.text(0.02, 0.92, 'masked H recombination lines', transform=ax1.transAxes, fontsize=9, color='0.3')
 

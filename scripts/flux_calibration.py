@@ -161,7 +161,7 @@ def plot_throughput_fit(result, obj_dict, savepath=plot_flux_cal_dir, obs_date=N
             ax.axvspan(lo, hi, color='grey', alpha=0.25,
                     label='downweighted (telluric)' if j == 0 else None)
 
-    ax.set_title(f"Rayner: {r['std_name']}  GA={r['GA']:.1f}", fontsize=13)
+    ax.set_title(f"Rayner: {r['std_name'].replace('HD-', 'HD ')}  GA={r['GA']:.1f}", fontsize=13)
     ax.set_xlabel(r'Wavelength [$\AA$]', fontsize=13)
     ax.set_ylabel('throughput', fontsize=13)
     kept = r['wave'][clip_edges_mask(r['wave'])]   # final product trims these edges off -- don't let them dominate the view
@@ -194,7 +194,7 @@ def plot_throughput_validation(result, obj_dict, savepath=plot_flux_cal_dir, obs
     ax1.set_ylim(min(rflux_cut) * 0.99, max(rflux_cut) * 1.005)
     ax1.tick_params(axis='both', labelsize=8)
     ax1.legend(fontsize=9, loc='upper right')
-    ax1.set_title(r['std_name'], fontsize=12, pad=12)
+    ax1.set_title(r['std_name'].replace('HD-', 'HD '), fontsize=12, pad=12)
     ax2.scatter(r['wave'], ratio, marker='o', s=0.1, color='black', zorder=1)
     ax2.axhline(1, color='grey', lw=1, zorder=0)
     ax2.set_ylim(0.9, 1.1)
