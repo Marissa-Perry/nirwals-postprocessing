@@ -21,9 +21,9 @@ from .get_NIRWALS_DRP_products import data_dir, plot_dir
 plot_dither_dir = plot_dir / 'combined_dithers'
 os.makedirs(plot_dither_dir, exist_ok=True)
 
-# ---- default cube-reconstruction parameters (from Version_3/parameters_file.txt) ----
+# cube-reconstruction parameters (from Version_3/parameters_file.txt)
 ASTROMETRY_FILE = data_dir / 'IFU' / 'NIRWALS_obj_bundle_IFU_astrom.csv'
-DITHER_OFFSETS_FILE = data_dir / 'IFU' / 'dither_pattern.csv'  # edit this file directly for a different dither pattern
+DITHER_OFFSETS_FILE = data_dir / 'IFU' / 'dither_pattern.csv'  # users need to edit this file directly for a different dither pattern
 
 INPUT_GRID_DIMS = (25, 35)     # on-sky extent (arcsec) the astrometry positions are defined against
 OUTPUT_GRID_DIMS = (25, 35)    # output cube spatial extent (arcsec), before dividing by OUT_ARCSEC_PER_PIXEL
@@ -33,8 +33,8 @@ GAUSSIAN_SIGMA_PIXELS = 1.1 / OUT_ARCSEC_PER_PIXEL
 RLIM_PIXELS = 1.5 / OUT_ARCSEC_PER_PIXEL
 
 # clipping edges of data
-CLIP_WAVE_BLUE_RANGE = 50  # [A]
-CLIP_WAVE_RED_RANGE = 50   # [A]
+CLIP_WAVE_BLUE_RANGE = 60  # [A]
+CLIP_WAVE_RED_RANGE = 130   # [A]
 
 
 def clip_edges_mask(wave, blue_wav_clip=CLIP_WAVE_BLUE_RANGE, red_wav_clip=CLIP_WAVE_RED_RANGE):

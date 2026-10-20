@@ -14,6 +14,7 @@ from pypeit.core.spectrum import Spectrum
 from pathlib import Path
 
 from .flux_calibration import read_spec_phot_standard
+from .dither_combine import clip_edges_mask
 
 # -------- filepath params ----------
 this_dir = Path(__file__).resolve().parent     # .../post_reduction_processing/scripts
@@ -337,7 +338,8 @@ def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, star_sigma
     ax1.step(wave_m, star_model, where='mid', color='#94d2bd', lw=1.5, ls='dashed', label=r'star model', zorder=2)
     ax1.step(wave_m, full_model, where='mid', color='#0a9396', lw=1.2, label=r'star $\times$ tellurics (full model)', zorder=3)
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
-    ax1.set_xlim(np.nanmin(wave_m), np.nanmax(wave_m))
+    kept = star_wave[clip_edges_mask(star_wave)]   # final product trims these edges off -- don't let them dominate the view
+    ax1.set_xlim(kept.min(), kept.max())
     if ylim is not None:
         ax1.set_ylim(*ylim)
     else:
@@ -403,7 +405,8 @@ def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, star_sigma
     ax1.step(wave_m, poly_model, where='mid', color='black', lw=1.2, ls='dashed', label=r'polynomial model', zorder=2)
     ax1.step(wave_m, full_model, where='mid', color='#1CABC4', lw=1.2, label=r'poly $\times$ tellurics (full model)', zorder=3)
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
-    ax1.set_xlim(np.nanmin(wave_m), np.nanmax(wave_m))
+    kept = star_wave[clip_edges_mask(star_wave)]   # final product trims these edges off -- don't let them dominate the view
+    ax1.set_xlim(kept.min(), kept.max())
     if ylim is not None:
         ax1.set_ylim(*ylim)
     else:

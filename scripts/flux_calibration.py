@@ -8,6 +8,7 @@ import glob
 import os
 
 from .fiber_coadd import select_bright_fibers
+from .dither_combine import clip_edges_mask
 
 # -------- filepath params ----------
 this_dir = Path(__file__).resolve().parent     # .../post_reduction_processing/scripts
@@ -163,6 +164,8 @@ def plot_throughput_fit(result, obj_dict, savepath=plot_flux_cal_dir, obs_date=N
     ax.set_title(f"Rayner: {r['std_name']}  GA={r['GA']:.1f}", fontsize=13)
     ax.set_xlabel(r'Wavelength [$\AA$]', fontsize=13)
     ax.set_ylabel('throughput', fontsize=13)
+    kept = r['wave'][clip_edges_mask(r['wave'])]   # final product trims these edges off -- don't let them dominate the view
+    ax.set_xlim(kept.min(), kept.max())
     ax.legend(fontsize=11)
     plt.tight_layout()
     if savepath:
@@ -184,13 +187,13 @@ def plot_throughput_validation(result, obj_dict, savepath=plot_flux_cal_dir, obs
     ratio = std_cal / rflux_cut
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(5, 4), sharex=True, gridspec_kw={'height_ratios': [3, 1], 'hspace': 0})
-    ax1.step(r['wave'], std_cal, where='mid', lw=0.8, color='#0077b6', label='flux-calibrated obs')
-    ax1.step(r['wave'], rflux_cut, where='mid', color='black',  lw=0.8, linestyle='dashed', label='reference (Rayner+2009)')
+    ax1.step(r['wave'], std_cal, where='mid', lw=0.8, color='black', label='flux-calibrated obs')
+    ax1.step(r['wave'], rflux_cut, where='mid', color='#0a9396',  lw=0.8, linestyle='dashed', label='reference (Rayner+2009)')
 
     ax1.set_ylabel('Flux [J/pixel]', fontsize=12, labelpad=15)
-    ax1.set_ylim(min(rflux_cut) * 0.95, max(rflux_cut) * 1.005)
+    ax1.set_ylim(min(rflux_cut) * 0.99, max(rflux_cut) * 1.005)
     ax1.tick_params(axis='both', labelsize=8)
-    ax1.legend(fontsize=9, loc='lower left')
+    ax1.legend(fontsize=9, loc='upper right')
     ax1.set_title(r['std_name'], fontsize=12, pad=12)
     ax2.scatter(r['wave'], ratio, marker='o', s=0.1, color='black', zorder=1)
     ax2.axhline(1, color='grey', lw=1, zorder=0)
@@ -198,6 +201,8 @@ def plot_throughput_validation(result, obj_dict, savepath=plot_flux_cal_dir, obs
     ax2.set_ylabel('ratio', fontsize=12, labelpad=15)
     ax2.set_xlabel(r'Wavelength [$\AA$]', fontsize=12, labelpad=15)
     ax2.tick_params(axis='both', labelsize=8)
+    kept = r['wave'][clip_edges_mask(r['wave'])]   # final product trims these edges off -- don't let them dominate the view
+    ax2.set_xlim(kept.min(), kept.max())
     plt.tight_layout()
     if savepath:
         save_dir = os.path.join(savepath, obs_date, obj_dict['exposure_id']) if obs_date else os.path.join(savepath, obj_dict['exposure_id'])
@@ -345,7 +350,8 @@ def plot_flux_calibration(wave, counts, counts_err, flux_cal, flux_cal_err, gpcn
     ax3.fill_between(gpcnt_wave, 0, gpcnt_arr, step='mid', color='black', alpha=0.15)
     ax3.set_ylabel('# good pix', fontsize=8, labelpad=15)
     ax3.set_xlabel(r'Observed Wavelength [$\AA$]', fontsize=15, labelpad=15)
-    ax3.set_xlim(np.min(gpcnt_wave), np.max(gpcnt_wave))
+    kept = wave[clip_edges_mask(wave)]   # final product trims these edges off -- don't let them dominate the view
+    ax3.set_xlim(kept.min(), kept.max())
 
     plt.tight_layout()
     if savepath:
