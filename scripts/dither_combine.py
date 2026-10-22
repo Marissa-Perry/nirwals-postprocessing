@@ -228,17 +228,19 @@ def plot_fiber_map(combined, obs_date, savepath=plot_dither_dir, show=True, aper
         # outline each fiber so it's clearly resolved
         sc = ax.scatter(x[sl], y[sl], c=f[sl], s=100, vmin=vmin, vmax=vmax, cmap='viridis', edgecolors='black', linewidths=0.4)
 
+        title = f'exposure {i + 1}'
         if aperture_info is not None and aperture_info.get('fibers_used') is not None:
             used = aperture_info['fibers_used'][sl]   # just this exposure's fibers inside the shared region
             ax.scatter(x[sl][used], y[sl][used], s=180, facecolors='none', edgecolors='red', linewidths=1.2)
+            title += f' ({int(used.sum())} fibers)'
             if aperture_info.get('center') is not None and aperture_info.get('radius') is not None:
                 ax.add_patch(Circle(aperture_info['center'], aperture_info['radius'], fill=False, edgecolor='red', linestyle='--', linewidth=1.5))
                 # text position at the top of the half-light radius with 1" buffer
-                ax.text(aperture_info['center'][0], aperture_info['center'][1] + aperture_info['radius'] + 1, 
-                        s=f'reff={aperture_info['radius']:.1f}" {int(used.sum())} fibers', ha='center', 
+                ax.text(aperture_info['center'][0], aperture_info['center'][1] + aperture_info['radius'] + 1,
+                        s=f'reff={aperture_info['radius']:.1f}"', ha='center',
                         weight='bold', color='red', path_effects=[path_effects.withStroke(linewidth=5.8, foreground='white')], fontsize=12)
 
-        ax.set_title(f'exposure {i + 1}', fontsize=13, pad=15)
+        ax.set_title(title, fontsize=13, pad=15)
         ax.set_xlabel('X [arcsec]', fontsize=13, labelpad=10)
         ax.set_aspect('equal')
     axes[0][0].set_ylabel('Y [arcsec]', fontsize=13, labelpad=10)
@@ -302,7 +304,10 @@ def plot_coadded_spectrum(combined, flux_1d, sigma_1d, obs_date, savepath=plot_d
 
     fig, ax = plt.subplots(figsize=(8, 3))
     if extract_info is not None:
-        ax.set_title(f'{extract_info.get("method", "co-add")}: reff = {extract_info["radius"]:.1f}", {n_dither} exposures', fontsize=12, pad=15)
+        title = f'{extract_info.get("method", "co-add")}: {extract_info.get("n_fibers", "?")} fibers, {n_dither} exposures'
+        if extract_info.get('radius') is not None:
+            title += f', reff = {extract_info["radius"]:.1f}"'
+        ax.set_title(title, fontsize=12, pad=15)
         # ax.set_title(f'fiber co-add: reff = {extract_info["radius"]:.1f}", {n_dither} exposures', fontsize=12, pad=15)
     # shade + draw the clipped edges in light red (excluded from the FITS); kept region over-plotted in black
     ax.axvspan(wave.min(), wave.min() + CLIP_WAVE_BLUE_RANGE, color='lightcoral', alpha=0.12, zorder=0)

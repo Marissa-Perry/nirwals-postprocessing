@@ -10,7 +10,7 @@ from ..scripts.telluric_correction import (query_star_properties, rayner_std_spe
 from ..scripts.flux_calibration import (compute_throughput, save_throughput, flux_calibrate_exposure, plot_throughput_fit, plot_throughput_validation, plot_flux_calibration, processed_data_dir)
 from ..scripts.dither_combine import (combine_dithers, plot_fiber_map, plot_cube_image, plot_coadded_spectrum, clip_edges_mask)
 from ..scripts.data_products import write_postprocessed_fits, write_1d_fits
-from ..scripts.fiber_coadd import (select_bright_fibers, coadd_fibers, half_light_radius_rough_estimate, coadd_fibers_averaged)
+from ..scripts.fiber_coadd import (select_bright_fibers, coadd_fibers, half_light_radius_rough_estimate, coadd_fibers_averaged, select_snr_fibers)
 from ..scripts.bitmask import (MASK_BADPIX, MASK_SKYLINE, MASK_LOWTELL, MASK_DONOTUSE, DONOTUSE_BITS, TELL_MIN, SKY_NSIG)
 
 # ----------------------------------------------------------------------
@@ -406,14 +406,23 @@ def write_combined_outputs(combined, obs_date, throughput_file, plot=True):
     cube as a secondary) plus a quick-look 1D.
     """
     x, y = combined['x_arcsec'], combined['y_arcsec']
-    (cx, cy), reff = half_light_radius_rough_estimate(combined['flux_all'], x, y)
-    inside = (x - cx) ** 2 + (y - cy) ** 2 <= reff ** 2
+
+    ########## old half-light-radius aperture selection ################
+    # (cx, cy), reff = half_light_radius_rough_estimate(combined['flux_all'], x, y)
+    # inside = (x - cx) ** 2 + (y - cy) ** 2 <= reff ** 2
+    # extract_info = {'method': 'fiber co-add', 'center': (cx, cy), 'radius': reff,
+    #                 'n_fibers': int(inside.sum()), 'fibers_used': inside}
+    # print(f"\n{extract_info['method']}: centre=({cx:.1f}, {cy:.1f}) arcsec, R_eff={reff:.1f}\", {combined['n_dither']} exposures, {extract_info['n_fibers']} fibers")
+    #####################################################################
+    
+    wave_kept = clip_edges_mask(combined['wave'])  # exclude the dead edges from the per-fiber SNR estimate
+    inside = select_snr_fibers(combined['flux_all'], combined['sigma_all'], wave_kept)  # fibers with median SNR > 3
     # flux-conserving co-add: sum in-region fibers per exposure, then ivar-average the exposures
     flux_1d, sigma_1d, ngood_1d = coadd_fibers_averaged(combined['flux_all'], combined['sigma_all'], inside, combined['n_dither'])
-    extract_info = {'method': 'fiber co-add', 'center': (cx, cy), 'radius': reff,
+    extract_info = {'method': 'fiber co-add (SNR>3)', 'center': None, 'radius': None,
                     'n_fibers': int(inside.sum()), 'fibers_used': inside}
 
-    print(f"\n{extract_info['method']}: centre=({cx:.1f}, {cy:.1f}) arcsec, R_eff={reff:.1f}\", {combined['n_dither']} exposures, {extract_info['n_fibers']} fibers")
+    print(f"\n{extract_info['method']}: {combined['n_dither']} exposures, {extract_info['n_fibers']} fibers")
 
     if plot:
         plot_fiber_map(combined, obs_date, show=False)                              # raw IFU map with colorbar representing target flux

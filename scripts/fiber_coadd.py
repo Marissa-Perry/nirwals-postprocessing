@@ -11,6 +11,16 @@ def select_bright_fibers(flux_all, frac=0.2):
     return np.where(mean_flux > frac * np.nanmax(mean_flux))[0]
 
 
+def select_snr_fibers(flux_all, sigma_all, wave_mask, snr_thresh=3):
+    '''
+    Fibers whose median SNR within wave_mask exceeds snr_thresh.
+    '''
+    with np.errstate(invalid='ignore', divide='ignore'):
+        snr = flux_all[:, wave_mask] / sigma_all[:, wave_mask]   # sigma_all is NaN at bad pixels, so those drop out of the median
+    fiber_snr = np.nanmedian(snr, axis=1)
+    return fiber_snr > snr_thresh
+
+
 def coadd_fibers(flux_all, sigma_all, fibers):
     '''
     Co-add IFU source fibers. 
