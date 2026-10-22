@@ -33,8 +33,8 @@ GAUSSIAN_SIGMA_PIXELS = 1.1 / OUT_ARCSEC_PER_PIXEL
 RLIM_PIXELS = 1.5 / OUT_ARCSEC_PER_PIXEL
 
 # clipping edges of data
-CLIP_WAVE_BLUE_RANGE = 60  # [A]
-CLIP_WAVE_RED_RANGE = 130   # [A]
+CLIP_WAVE_BLUE_RANGE = 100  # [A]
+CLIP_WAVE_RED_RANGE = 80   # [A]
 
 
 def clip_edges_mask(wave, blue_wav_clip=CLIP_WAVE_BLUE_RANGE, red_wav_clip=CLIP_WAVE_RED_RANGE):
