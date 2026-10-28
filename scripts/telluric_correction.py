@@ -6,7 +6,8 @@ import json
 
 from pypeit.core.telluric import read_telluric_pca
 from pypeit.core import telluric as _tell
-from astroquery.simbad import Simbad
+from astroquery.simbad import Simbad, conf as simbad_conf
+simbad_conf.server = 'simbad.harvard.edu'   # US mirror -- the default CDS Strasbourg site has had repeated outages
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 from pypeit.core.telluric import Telluric, init_star_model, eval_star_model, init_poly_model, eval_poly_model

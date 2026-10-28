@@ -1,0 +1,62 @@
+{
+  "HIP 105164": {
+    "name": "HIP 105164",
+    "sp_type": "B7III",
+    "v_mag": 5.811999797821045,
+    "ra": 319.54613624695,
+    "dec": -4.519479895469999,
+    "colnames": [
+      "main_id",
+      "ra",
+      "dec",
+      "coo_err_maj",
+      "coo_err_min",
+      "coo_err_angle",
+      "coo_wavelength",
+      "coo_bibcode",
+      "V",
+      "sp_type",
+      "matched_id"
+    ]
+  },
+  "HD 19305": {
+    "name": "HD 19305",
+    "sp_type": "M0V",
+    "v_mag": 9.055000305175781,
+    "ra": 46.61140439245542,
+    "dec": 1.9651751474955548,
+    "colnames": [
+      "main_id",
+      "ra",
+      "dec",
+      "coo_err_maj",
+      "coo_err_min",
+      "coo_err_angle",
+      "coo_wavelength",
+      "coo_bibcode",
+      "V",
+      "sp_type",
+      "matched_id"
+    ]
+  },
+  "HIP 103889": {
+    "name": "HIP 103889",
+    "sp_type": "B8III",
+    "v_mag": 6.48799991607666,
+    "ra": 315.74844516773,
+    "dec": -0.9247449347099997,
+    "colnames": [
+      "main_id",
+      "ra",
+      "dec",
+      "coo_err_maj",
+      "coo_err_min",
+      "coo_err_angle",
+      "coo_wavelength",
+      "coo_bibcode",
+      "V",
+      "sp_type",
+      "matched_id"
+    ]
+  }
+}
