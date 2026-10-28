@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import median_filter
 import os
+import json
 
 from pypeit.core.telluric import read_telluric_pca
 from pypeit.core import telluric as _tell
@@ -49,13 +50,31 @@ def load_model_transmission(wave_min, wave_max, telgridfile=TELLPCA_FILE):
     transmission = np.exp(-np.sinh(tell_dict['tell_pca'][0]))
     return wave_grid, transmission
 
+STAR_PROPERTIES_CACHE = data_dir / 'simbad_star_properties.json'
+
+def _load_star_properties_cache():
+    if STAR_PROPERTIES_CACHE.exists():
+        with open(STAR_PROPERTIES_CACHE) as f:
+            return json.load(f)
+    return {}
+
+def _save_star_properties_cache(cache):
+    with open(STAR_PROPERTIES_CACHE, 'w') as f:
+        json.dump(cache, f, indent=2)
+
 def query_star_properties(star_name):
     '''
-    Get spectral type, V mag, and coordinates from SIMBAD.
+    Get spectral type, V mag, and coordinates from SIMBAD, cached locally by star name so
+    repeat lookups -- including runs while SIMBAD itself is unreachable -- don't need a
+    live query.
 
     star_name (str): e.g. 'HIP 105164'
     Returns dict with 'sp_type', 'v_mag', 'ra', 'dec'
     '''
+    cache = _load_star_properties_cache()
+    if star_name in cache:
+        return cache[star_name]
+
     s = Simbad()
     s.add_votable_fields('sp_type', 'V', 'ra', 'dec')
     t = s.query_object(star_name)
@@ -65,13 +84,16 @@ def query_star_properties(star_name):
     cols = {c.lower(): c for c in t.colnames}
     def get(key):
         return t[cols[key]][0] if key in cols else None
-    
+
     star_properties_dict = {'name': star_name,
                             'sp_type': str(get('sp_type')),
                             'v_mag': float(get('v')),
                             'ra': float(get('ra')),
                             'dec': float(get('dec')),
-                            'colnames': t.colnames}
+                            'colnames': list(t.colnames)}
+
+    cache[star_name] = star_properties_dict
+    _save_star_properties_cache(cache)
 
     return star_properties_dict
 
