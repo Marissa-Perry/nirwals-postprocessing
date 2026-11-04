@@ -58,5 +58,45 @@
       "sp_type",
       "matched_id"
     ]
+  },
+  "HIP 32901": {
+    "name": "HIP 32901",
+    "sp_type": "B8V",
+    "v_mag": 7.230000019073486,
+    "ra": 102.82721241727002,
+    "dec": -3.51377815821,
+    "colnames": [
+      "main_id",
+      "ra",
+      "dec",
+      "coo_err_maj",
+      "coo_err_min",
+      "coo_err_angle",
+      "coo_wavelength",
+      "coo_bibcode",
+      "V",
+      "sp_type",
+      "matched_id"
+    ]
+  },
+  "HIP 24847": {
+    "name": "HIP 24847",
+    "sp_type": "B3V",
+    "v_mag": 6.349999904632568,
+    "ra": 79.897026816,
+    "dec": -1.41191126941,
+    "colnames": [
+      "main_id",
+      "ra",
+      "dec",
+      "coo_err_maj",
+      "coo_err_min",
+      "coo_err_angle",
+      "coo_wavelength",
+      "coo_bibcode",
+      "V",
+      "sp_type",
+      "matched_id"
+    ]
   }
 }

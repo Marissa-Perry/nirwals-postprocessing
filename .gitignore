@@ -22,3 +22,5 @@ outputs/throughput_curves/*
 *.fits
 *.tar
 *.txt
+# cached SIMBAD star properties
+*.json
