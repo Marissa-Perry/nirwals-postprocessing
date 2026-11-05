@@ -283,8 +283,9 @@ def get_reduced_spectra(sci_exp, all_exp):
     '''
     Flux + sigma for one reduced science exposure, built from the reduced IVAR:
     the object variance (from the 'a' product) plus, when a matching sky exposure
-    exists, the sky variance -- both interpolated onto the ssc grid. Sky fibers
-    are removed so the arrays match the object-fiber astrometry.
+    exists, the sky variance -- both interpolated onto the ssc grid. The 'a'
+    product still carries sky fibers, so those are removed to match ssc's
+    already object-fiber-only rows.
     '''
     fmap = load_fiber_map_dict()
     sky_idx = fmap['sky_indices']
@@ -296,10 +297,6 @@ def get_reduced_spectra(sci_exp, all_exp):
     # object variance from the 'a' product, interpolated onto the ssc grid
     a = sci_exp['a']
     var_obj = interp1d(np.asarray(a['wave'], float), variance_from_ivar(a['ivar'], sky_idx), axis=1, bounds_error=False, fill_value=np.nan)(wave)
-
-    # keep flux on the same (object) fibers as the variance
-    if flux_all.shape[0] != var_obj.shape[0]:
-        flux_all = np.delete(flux_all, sky_idx, axis=0)
 
     total_var = var_obj
     sky_exp = find_matching_sky(sci_exp, all_exp)

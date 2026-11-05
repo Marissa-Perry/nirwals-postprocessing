@@ -5,7 +5,7 @@ import os
 import sys
 from datetime import datetime
 
-from ..scripts.get_NIRWALS_DRP_products import (get_reduced_exposures, get_reduced_spectra, plot_science_reduction_results, plot_ext_spectra_dir, load_fiber_map_dict)
+from ..scripts.get_NIRWALS_DRP_products import (get_reduced_exposures, get_reduced_spectra, plot_science_reduction_results, plot_ext_spectra_dir)
 from ..scripts.telluric_correction import (query_star_properties, rayner_std_spec, fit_telluric_star_model, fit_telluric_poly_model, apply_telluric_model, plot_star_telluric_model_fit, plot_poly_telluric_model_fit, plot_telluric_correction)
 from ..scripts.flux_calibration import (compute_throughput, save_throughput, flux_calibrate_exposure, plot_throughput_fit, plot_throughput_validation, plot_flux_calibration, processed_data_dir)
 from ..scripts.dither_combine import (combine_dithers, plot_fiber_map, plot_cube_image, plot_coadded_spectrum, clip_edges_mask)
@@ -340,8 +340,6 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
             m = sci_exp['ssc'].get('mask')
             if m is not None:
                 m = np.asarray(m)
-                if m.shape[0] != flux.shape[0]:
-                    m = np.delete(m, load_fiber_map_dict()['sky_indices'], axis=0)
                 good_fibers_1d = np.nansum(m[bright] == 0, axis=0)
             else:
                 good_fibers_1d = np.zeros_like(wave)
@@ -351,18 +349,12 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
         flux, sigma = tcorr['flux'], tcorr['sigma']
  
     # --- extra per-exposure products for the MaNGA-style 2D FITS (read from the reduced extensions) ---
-    fmap = load_fiber_map_dict(); sky_idx = fmap['sky_indices']
     ssc = sci_exp['ssc']
-    n_obj = flux_all.shape[0]
 
-    def _obj_fibers(arr):                       # drop sky fibers if the array still carries them
-        if arr is None:
-            return None
-        arr = np.asarray(arr)
-        return np.delete(arr, sky_idx, axis=0) if arr.shape[0] != n_obj else arr
-
-    mask = _obj_fibers(ssc.get('mask'))                                           # (n_fib, n_wave), 1 = bad
-    skycorr = _obj_fibers(ssc.get('skycorr'))                                     # (n_fib, n_wave) sky model, or None
+    mask = ssc.get('mask')                                                        # (n_fib, n_wave), 1 = bad
+    mask = np.asarray(mask) if mask is not None else None
+    skycorr = ssc.get('skycorr')                                                  # (n_fib, n_wave) sky model, or None
+    skycorr = np.asarray(skycorr) if skycorr is not None else None
     tellcorr = np.interp(wave, telluric_fit['wave'], telluric_fit['transmission'], left=np.nan, right=np.nan)  # 1D transmission
     specres = np.interp(wave, ssc['wave'], ssc['spec_res']) if ssc.get('spec_res') is not None else None
 
