@@ -471,6 +471,9 @@ def parse_args():
     p.add_argument('--no-dithers', action='store_true',
                     help='Use only the first exposure instead of combining all dithered exposures. A single-exposure cube is still built and written as the usual combined outputs (cube + 1D + plots).')
 
+    p.add_argument('--plot-reduced-spectra', action='store_true',
+                    help='Generate reduction diagnostic plots for every fiber in the observation. Plots the raw, continuum fit, and reduced spectra from the previous reduction step.')
+
     return p.parse_args()
 
 
@@ -482,7 +485,8 @@ def main():
 
 
 def run(args):
-    plot_reduced_1D_spectra(args.obs_date)
+    if args.plot_reduced_spectra:
+        plot_reduced_1D_spectra(args.obs_date)
 
     exposures = get_reduced_exposures(args.obs_date)
 
