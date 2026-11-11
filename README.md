@@ -4,7 +4,7 @@ Postprocessing steps for reduced NIRWALS observations from SALT:
 - atmospheric absorption (telluric) correction
 - flux calibration
 - 1D spectra product
-    - selects on approximated half-light radius of IFU for each dithered exposure (if any) and averages across them.
+    - selects on IFU fibers with SNR>3 for each dithered exposure (if any) and averages across them.
 - 2D fiber data product
     - dithered observations (if any) are stacked as additional rows.
 - 3D data cube product
@@ -47,5 +47,6 @@ Description of optional arguments:
 - `--telluric-standard-polyorder`: Continuum polynomial order for the star-model telluric fit.
 - `--specphot-polyorder`: Continuum polynomial order for the star-model telluric fit (for stellar template, using its Rayner+2009 reference spectrum).
 - `--target-polyorder`: Continuum polynomial order for the poly-model telluric fit, used when no telluric standard is given.
+- `--plot-reduced-spectra`: Diagnostic plots of the raw, continuum fit, and reduced spectra from the previous reduction step for every fiber in the observation.
 
 Unless `--no-dithers` is passed, multiple science target exposures found for YYYYMMDD are treated as dithers. The dither offset pattern used for combination is read from `data/IFU/dither_pattern.csv`. This file must be edited directly to setup a different dither pattern.
