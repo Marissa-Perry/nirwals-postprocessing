@@ -188,7 +188,7 @@ def plot_throughput_validation(result, obj_dict, savepath=plot_flux_cal_dir, obs
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(5, 4), sharex=True, gridspec_kw={'height_ratios': [3, 1], 'hspace': 0})
     ax1.step(r['wave'], std_cal, where='mid', lw=0.8, color='black', label='flux-calibrated')
-    ax1.step(r['wave'], rflux_cut, where='mid', color='#86aa8d',  lw=0.8, linestyle='dashed', label='reference (Rayner+2009)')
+    ax1.step(r['wave'], rflux_cut, where='mid', color='#6399bb',  lw=0.8, linestyle='dashed', label='reference (Rayner+2009)')
 
     ax1.set_ylabel('Flux [J/pixel]', fontsize=12, labelpad=15)
     ax1.set_ylim(min(rflux_cut) * 0.99, max(rflux_cut) * 1.005)
