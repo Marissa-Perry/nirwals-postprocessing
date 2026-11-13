@@ -358,27 +358,27 @@ def plot_star_telluric_model_fit(star_wave, star_flux, fit, obj_dict, star_sigma
     if star_sigma is not None:
         ax1.fill_between(star_wave, star_flux - star_sigma, star_flux + star_sigma, step='mid', color='black', alpha=0.15, linewidth=0.6, zorder=0)
     ax1.step(star_wave, star_flux, where='mid', color='black', lw=0.8, label='observed', zorder=1)
-    ax1.step(wave_m, star_model, where='mid', color='#94d2bd', lw=1.5, ls='dashed', label=r'star model', zorder=2)
-    ax1.step(wave_m, full_model, where='mid', color='#0a9396', lw=1.2, label=r'star $\times$ tellurics (full model)', zorder=3)
+    ax1.step(wave_m, star_model, where='mid', color='#86aa8d', alpha=0.9, lw=1.5, ls='dashed', label=r'star model', zorder=2)
+    ax1.step(wave_m, full_model, where='mid', color='#349ea2', lw=1.2, label=r'star $\times$ tellurics (full model)', zorder=3)
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
     kept = star_wave[clip_edges_mask(star_wave)]   # final product trims these edges off -- don't let them dominate the view
     ax1.set_xlim(kept.min(), kept.max())
     if ylim is not None:
         ax1.set_ylim(*ylim)
     else:
-        ax1.set_ylim(min(full_model) * 0.95, max(star_model) * 1.05)
+        ax1.set_ylim(min(full_model) * 0.99, max(star_model) * 1.05)
     ax1.legend(fontsize=10, loc='lower left')
     # ax1.text(0.02, 0.92, 'masked H recombination lines', transform=ax1.transAxes, fontsize=9, color='0.3')
 
-    # --- middle: residuals ---
-    resid = (star_flux - full_model) / np.nanmedian(full_model)
-    ax2.set_ylabel('residual', fontsize=9, labelpad=10)
-    ax2.set_ylim(-0.15, 0.15)
+    # --- middle: fractional residual ---
+    resid = (star_flux - full_model) / full_model
+    ax2.set_ylabel('fractional\nresidual', fontsize=9, labelpad=10)
+    ax2.set_ylim(-0.18, 0.18)
     ax2.step(star_wave, resid, where='mid', color='black', lw=0.8, zorder=1)
-    ax2.axhline(0, color='#0077b6', lw=1.5, zorder=0)
+    ax2.axhline(0, color='#349ea2', lw=1.5, zorder=1)
 
     # --- bottom: fitted transmission ---
-    ax3.fill_between(wave_m, T, step='mid', color='grey', alpha=0.2, zorder=1)
+    ax3.fill_between(wave_m, T, step='mid', color='grey', alpha=0.4, zorder=1)
     ax3.step(wave_m, T, where='mid', color='black', lw=0.6, zorder=2)
     ax3.set_ylim(-0.01, 1.1)
     ax3.set_ylabel('transmission', fontsize=9, labelpad=27)
@@ -425,25 +425,25 @@ def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, star_sigma
     if star_sigma is not None:
         ax1.fill_between(star_wave, star_flux - star_sigma, star_flux + star_sigma, step='mid', color='black', alpha=0.15, linewidth=0.6, zorder=0)
     ax1.step(star_wave, star_flux, where='mid', color='black', alpha=0.5, lw=0.8, label='observed', zorder=1)
-    ax1.step(wave_m, poly_model, where='mid', color='black', lw=1.2, ls='dashed', label=r'polynomial model', zorder=2)
-    ax1.step(wave_m, full_model, where='mid', color='#1CABC4', lw=1.2, label=r'poly $\times$ tellurics (full model)', zorder=3)
+    ax1.step(wave_m, poly_model, where='mid', color='#86aa8d', lw=1.2, ls='dashed', label=r'polynomial model', zorder=2)
+    ax1.step(wave_m, full_model, where='mid', color='#349ea2', lw=1.2, label=r'poly $\times$ tellurics (full model)', zorder=3)
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
     kept = star_wave[clip_edges_mask(star_wave)]   # final product trims these edges off -- don't let them dominate the view
     ax1.set_xlim(kept.min(), kept.max())
     if ylim is not None:
         ax1.set_ylim(*ylim)
     else:
-        ax1.set_ylim(min(full_model) * 0.90, max(poly_model) * 1.10)
+        ax1.set_ylim(min(full_model) * 0.99, max(poly_model) * 1.05)
     ax1.legend(fontsize=10, loc='upper right')
     # if has_masked:
     #     ax1.text(0.02, 0.92, 'masked H recombination lines', transform=ax1.transAxes, fontsize=9, color='0.3')
 
-    # --- middle: residuals ---
-    resid = (star_flux - full_model) / np.nanmedian(full_model)
-    ax2.set_ylabel('residual', fontsize=9, labelpad=10)
+    # --- middle: fractional residual ---
+    resid = (star_flux - full_model) / full_model
+    ax2.set_ylabel('fractional\nresidual', fontsize=9, labelpad=10)
     ax2.set_ylim(-0.15, 0.15)
-    ax2.step(star_wave, resid, where='mid', color='black', alpha=0.5, lw=0.8, zorder=1)
-    ax2.axhline(0, color='#1CABC4', lw=1.5, zorder=0)
+    ax2.step(star_wave, resid, where='mid', color='black', lw=0.8, zorder=1)
+    ax2.axhline(0, color='#349ea2', lw=1.5, zorder=1)
 
     # --- bottom: fitted transmission ---
     ax3.fill_between(wave_m, T, step='mid', color='grey', alpha=0.7, zorder=1)
@@ -462,7 +462,7 @@ def plot_poly_telluric_model_fit(star_wave, star_flux, fit, obj_dict, star_sigma
     plt.show() if show else plt.close()
     
 
-def plot_telluric_correction(wave, raw_flux, corr_flux, obj_dict, raw_sigma=None, corr_sigma=None, savepath=plot_tell_corr_dir, obs_date=None, smooth=10, show=True):
+def plot_telluric_correction(wave, raw_flux, corr_flux, obj_dict, raw_sigma=None, corr_sigma=None, savepath=plot_tell_corr_dir, obs_date=None, smooth=5, show=True):
     '''
     Corrected vs uncorrected (+ 1-sigma bands, if given), with the corr/raw ratio below.
     '''
@@ -471,17 +471,28 @@ def plot_telluric_correction(wave, raw_flux, corr_flux, obj_dict, raw_sigma=None
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 5), sharex=True, gridspec_kw={'hspace': 0, 'height_ratios': [3, 1]})
     ax1.set_title(obj_dict['object'], fontsize=14, pad=15)
     if raw_sigma is not None:
-        ax1.fill_between(wave, raw_flux - raw_sigma, raw_flux + raw_sigma, step='mid', color='blue', alpha=0.2, linewidth=0.6, zorder=0)
+        ax1.fill_between(wave, raw_flux - raw_sigma, raw_flux + raw_sigma, step='mid', color='#b691cb', alpha=0.1, linewidth=0.6, zorder=0)
     if corr_sigma is not None:
-        ax1.fill_between(wave, corr_flux - corr_sigma, corr_flux + corr_sigma, step='mid', color='black', alpha=0.2, linewidth=0.6, zorder=0)
-    ax1.step(wave, raw_flux, where='mid', color='blue', alpha=0.8, lw=0.5, label='uncorrected')
-    ax1.step(wave, corr_flux, where='mid', color='black', alpha=0.95, lw=0.5, label='telluric corrected')
-    ax1.set_ylim(np.nanpercentile(corr_flux, 0.75), np.nanpercentile(corr_flux, 99.9) * 1.10)
+        ax1.fill_between(wave, corr_flux - corr_sigma, corr_flux + corr_sigma, step='mid', color='#6399bb', alpha=0.1, linewidth=0.6, zorder=0)
+    raw_smooth = median_filter(raw_flux, size=smooth)
+    corr_smooth = median_filter(corr_flux, size=smooth)
+    ax1.step(wave, raw_flux, where='mid', color='#b691cb', alpha=0.4, lw=0.5, zorder=1)
+    ax1.step(wave, corr_flux, where='mid', color='#9a8c98', alpha=0.4, lw=0.5, zorder=1)
+    ax1.step(wave, raw_smooth, where='mid', color='#b691cb', lw=1, ls='dashed', zorder=2, label='uncorrected')
+    ax1.step(wave, corr_smooth, where='mid', color='#9a8c98', lw=1, zorder=2, label='telluric corrected')
+    good = np.isfinite(corr_flux)
+    if corr_sigma is not None:
+        good &= np.isfinite(corr_sigma)
+        sigma_thresh = np.nanpercentile(corr_sigma[good], 90)   # drop the noisiest columns -- these are the deep spikes, not real signal
+        good &= corr_sigma <= sigma_thresh
+    lo, hi = np.nanpercentile(corr_flux[good], [3, 99])
+    pad = 0.2 * (hi - lo)
+    ax1.set_ylim(lo - pad, hi + pad)
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
     ax1.legend(fontsize=12)
 
     wave_grid, model_transmission = load_model_transmission(wave.min(), wave.max())
-    ax2.step(wave_grid, model_transmission, where='mid', color='grey', lw=0.8, zorder=1, label='model')
+    ax2.step(wave_grid, model_transmission, where='mid', color='grey', alpha=0.3, lw=0.8, zorder=1, label='model')
     ax2.step(wave, transmission, where='mid', color='black', lw=1.0, zorder=2, label='measured')
     ax2.set_ylim(-0.1, 1.1)
     ax2.set_xlim(wave.min(), wave.max())

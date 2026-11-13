@@ -152,7 +152,7 @@ def plot_throughput_fit(result, obj_dict, savepath=plot_flux_cal_dir, obs_date=N
     r = result
     cutw, cutw2 = r['cutw'], r['cutw2']
     fig, ax = plt.subplots(figsize=(9, 4))
-    ax.plot(r['wave'], r['ratio'][cutw:-cutw2], lw=0.8, label='ratio (obs / Rayner)')
+    ax.plot(r['wave'], r['ratio'][cutw:-cutw2], lw=0.8, color='#6399bb', label='ratio (obs / Rayner)')
     ax.plot(r['wave'], r['throughput'], color='black', ls='dashed', lw=1.5, label='spline throughput')
 
     # shade downweighted telluric windows
@@ -187,17 +187,17 @@ def plot_throughput_validation(result, obj_dict, savepath=plot_flux_cal_dir, obs
     ratio = std_cal / rflux_cut
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(5, 4), sharex=True, gridspec_kw={'height_ratios': [3, 1], 'hspace': 0})
-    ax1.step(r['wave'], std_cal, where='mid', lw=0.8, color='black', label='flux-calibrated obs')
-    ax1.step(r['wave'], rflux_cut, where='mid', color='#0a9396',  lw=0.8, linestyle='dashed', label='reference (Rayner+2009)')
+    ax1.step(r['wave'], std_cal, where='mid', lw=0.8, color='black', label='flux-calibrated')
+    ax1.step(r['wave'], rflux_cut, where='mid', color='#86aa8d',  lw=0.8, linestyle='dashed', label='reference (Rayner+2009)')
 
     ax1.set_ylabel('Flux [J/pixel]', fontsize=12, labelpad=15)
     ax1.set_ylim(min(rflux_cut) * 0.99, max(rflux_cut) * 1.005)
     ax1.tick_params(axis='both', labelsize=8)
-    ax1.legend(fontsize=9, loc='upper right')
+    ax1.legend(fontsize=9, loc='lower left')
     ax1.set_title(r['std_name'].replace('HD-', 'HD '), fontsize=12, pad=12)
     ax2.scatter(r['wave'], ratio, marker='o', s=0.1, color='black', zorder=1)
     ax2.axhline(1, color='grey', lw=1, zorder=0)
-    ax2.set_ylim(0.9, 1.1)
+    ax2.set_ylim(0.85, 1.15)
     ax2.set_ylabel('ratio', fontsize=12, labelpad=15)
     ax2.set_xlabel(r'Wavelength [$\AA$]', fontsize=12, labelpad=15)
     ax2.tick_params(axis='both', labelsize=8)
@@ -311,7 +311,7 @@ def plot_throughput(throughput_wave, throughput_values, tell_windows=None, wave_
     plt.show() if show else plt.close()
 
 
-def plot_flux_calibration(wave, counts, counts_err, flux_cal, flux_cal_err, gpcnt_wave, gpcnt_arr, obj_dict, title='', savepath=plot_flux_cal_dir, obs_date=None, smooth=10, show=True):
+def plot_flux_calibration(wave, counts, counts_err, flux_cal, flux_cal_err, gpcnt_wave, gpcnt_arr, obj_dict, title='', savepath=plot_flux_cal_dir, obs_date=None, smooth=5, show=True):
     '''
     Two-panel flux-calibration diagnostic for a single spectrum.
       top:    input counts/s (+ 1-sigma band, smoothed overlay)
@@ -326,29 +326,38 @@ def plot_flux_calibration(wave, counts, counts_err, flux_cal, flux_cal_err, gpcn
     ax1.set_title(title, fontsize=15, pad=15)
 
     # top: counts/s
-    ax1.fill_between(wave, counts - counts_err, counts + counts_err, step='mid', color='blue', alpha=0.35, linewidth=0.5, zorder=0)
-    ax1.step(wave, counts, where='mid', color='blue', lw=0.5, zorder=1, label='reduced, telluric-corrected')
+    ax1.fill_between(wave, counts - counts_err, counts + counts_err, step='mid', color='#6399bb', alpha=0.1, linewidth=0.5, zorder=0)
+    counts_smooth = median_filter(counts, size=smooth)
+    ax1.step(wave, counts, where='mid', color='#9a8c98', alpha=0.4, lw=0.5, zorder=1)
+    ax1.step(wave, counts_smooth, where='mid', color='#9a8c98', lw=1.2, zorder=2, label='reduced, telluric-corrected')
     ax1.set_ylabel('counts / s', fontsize=13, labelpad=15)
-    finite_c = counts[np.isfinite(counts)]
+    mean_gp = np.mean(gpcnt_arr)
+    good_pix = gpcnt_arr >= 0.5 * mean_gp   # drop columns where most fibers were flagged bad -- these are the deep spikes, not real signal
+    finite_c = counts[np.isfinite(counts) & good_pix]
     if finite_c.size:
-        ax1.set_ylim(np.percentile(finite_c, 0.5) * 1.2, np.max(finite_c)+np.percentile(finite_c, 0.5) * 1.30)
+        lo, hi = np.nanpercentile(finite_c, [4, 99.8])
+        pad = 0.2 * (hi - lo)
+        ax1.set_ylim(lo - pad, hi + pad)
     ax1.legend(fontsize=11, loc='upper right')
 
     # middle: flux calibrated
-    ax2.fill_between(wave, flux_cal - flux_cal_err, flux_cal + flux_cal_err, step='mid', color='brown', alpha=0.35, linewidth=0.5, zorder=0)
-    ax2.step(wave, flux_cal, where='mid', color='brown', lw=0.5, zorder=1, label='and flux calibrated')
+    ax2.fill_between(wave, flux_cal - flux_cal_err, flux_cal + flux_cal_err, step='mid', color='black', alpha=0.1, linewidth=0.5, zorder=0)
+    flux_cal_smooth = median_filter(flux_cal, size=smooth)
+    ax2.step(wave, flux_cal, where='mid', color='#86aa8d', alpha=0.2, lw=0.5, zorder=1)
+    ax2.step(wave, flux_cal_smooth, where='mid', color='#86aa8d', lw=1.2, zorder=2, label='and flux calibrated')
     ax2.set_ylabel(r'$F_\lambda$ [erg/s/cm$^2$/$\AA$]', fontsize=13, labelpad=15)
     ax2.set_xlabel(r'Observed Wavelength [$\AA$]', fontsize=13, labelpad=15)
-    finite_f = flux_cal[np.isfinite(flux_cal)]
+    finite_f = flux_cal[np.isfinite(flux_cal) & good_pix]
     if finite_f.size:
-        ax2.set_ylim(np.percentile(finite_f, 0.5) * 1.2, np.max(finite_f)+np.percentile(finite_f, 0.5) * 1.30)
+        lo, hi = np.nanpercentile(finite_f, [4, 99.8])
+        pad = 0.2 * (hi - lo)
+        ax2.set_ylim(lo - pad, hi + pad)
     ax2.legend(fontsize=11, loc='upper right')
 
     # bottom: good pixel counts
-    mean_gp = np.mean(gpcnt_arr)
     ax3.step(gpcnt_wave, gpcnt_arr, where='mid', color='grey', alpha=0.8, linewidth=0.6)
     ax3.fill_between(gpcnt_wave, 0, gpcnt_arr, step='mid', color='black', alpha=0.15)
-    ax3.set_ylabel('# good pix', fontsize=8, labelpad=15)
+    ax3.set_ylabel('# good pixels', fontsize=10, labelpad=18)
     ax3.set_xlabel(r'Observed Wavelength [$\AA$]', fontsize=15, labelpad=15)
     kept = wave[clip_edges_mask(wave)]   # final product trims these edges off -- don't let them dominate the view
     ax3.set_xlim(kept.min(), kept.max())
