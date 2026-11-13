@@ -173,7 +173,7 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
                                   polyorder=polyorder, hydrogen_mask_wid=hydrogen_mask_wid, disp=disp, std_spec=std_spec)
 
     if plot:
-        plot_star_telluric_model_fit(wave, flux, fit, standard_exp, obs_date=obs_date, show=False)
+        plot_star_telluric_model_fit(wave, flux, fit, standard_exp, star_sigma=sigma, obs_date=obs_date, show=False)
 
     return fit
 
@@ -196,7 +196,7 @@ def fit_telluric_poly(target_exp, target_exposures, polyorder=3, disp=False, plo
                                   resln_frac_bounds=(lower_specres_frac, upper_specres_frac),
                                   polyorder=polyorder, disp=disp)
     if plot:
-        plot_poly_telluric_model_fit(wave, flux, fit, target_exp, obs_date=obs_date, show=False)
+        plot_poly_telluric_model_fit(wave, flux, fit, target_exp, star_sigma=sigma, obs_date=obs_date, show=False)
     return fit
 
 
@@ -327,9 +327,9 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
  
     tcorr_1d = tcorr_sigma_1d = None
     if plot:
-        raw_1d, _, _, _ = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
+        raw_1d, raw_sigma_1d, _, _ = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
         tcorr_1d, tcorr_sigma_1d, _, _ = coadd_bright_fibers_with_ivar(tcorr['flux'], tcorr['sigma'])
-        plot_telluric_correction(wave, raw_1d, tcorr_1d, sci_exp, obs_date=obs_date, show=False)
+        plot_telluric_correction(wave, raw_1d, tcorr_1d, sci_exp, raw_sigma=raw_sigma_1d, corr_sigma=tcorr_sigma_1d, obs_date=obs_date, show=False)
  
     if throughput_file is not None:
         flux, sigma = flux_calibrate_exposure(wave, tcorr['flux'], tcorr['sigma'], sci_exp, throughput_file)
@@ -465,7 +465,7 @@ def parse_args():
 
     p.add_argument('--specphot-date', default=None,
                     help='YYYYMMDD of a spec-phot standard observation. If omitted, flux calibration and dither combination are both skipped.')
-    p.add_argument('--specphot-polyorder', type=int, default=8,
+    p.add_argument('--specphot-polyorder', type=int, default=10,
                     help='Continuum polynomial order for the spec-phot standard\'s self telluric correction with star-model.')
 
     p.add_argument('--no-dithers', action='store_true',
