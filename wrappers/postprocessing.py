@@ -305,7 +305,7 @@ def get_throughput_file(sci_exposures, args, plot=True):
     specphot_exp['flux'] = res['flux'].astype(flux_dtype)
     specphot_exp['wave'] = wave
 
-    throughput_result = compute_throughput(spec_phot_obs=specphot_exp, spec_phot_name=specphot_name, tell_windows=None)
+    throughput_result = compute_throughput(spec_phot_obs=specphot_exp, spec_phot_name=specphot_name)
 
     if plot:
         plot_throughput_fit(throughput_result, specphot_exp, obs_date=args.obs_date, show=False)

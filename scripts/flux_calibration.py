@@ -61,7 +61,7 @@ def read_spec_phot_standard(obj_name, std_star_directory=rayner_dir):
     return spec_phot_dict
 
 
-def compute_throughput(spec_phot_obs, spec_phot_name, tell_windows=None,
+def compute_throughput(spec_phot_obs, spec_phot_name,
                        perf=0.01, cut=5000.0, smooth=15, lam=800000,
                        cutw=81, cutw2=None, fibfil=0.62):
     '''
@@ -102,14 +102,8 @@ def compute_throughput(spec_phot_obs, spec_phot_name, tell_windows=None,
     cflux = oflux / rflux3
     cflux_cut = cflux[cutw:-cutw2]
 
-    # build spline weights: downweight telluric windows + drop non-finite
-    w = np.ones_like(wave_cut)
-    if tell_windows is not None:
-        for lo, hi in tell_windows:
-            w[(wave_cut >= lo) & (wave_cut <= hi)] = 1e-10   # near-zero weight
-
     finite = np.isfinite(cflux_cut) & np.isfinite(wave_cut)
-    spl = make_smoothing_spline(wave_cut[finite], cflux_cut[finite], w=w[finite], lam=lam)
+    spl = make_smoothing_spline(wave_cut[finite], cflux_cut[finite], lam=lam)
     throughput = spl(wave_cut)
 
     kernel = np.ones(smooth) / smooth
@@ -127,10 +121,9 @@ def compute_throughput(spec_phot_obs, spec_phot_name, tell_windows=None,
         'ratio': cflux, 
         'cutw': cutw, 
         'cutw2': cutw2,
-        'rflux3': rflux3, 
-        'soflux': soflux, 
-        'oflux': oflux,
-        'tell_windows': tell_windows
+        'rflux3': rflux3,
+        'soflux': soflux,
+        'oflux': oflux
     }
 
     return throughput_dict
@@ -154,12 +147,6 @@ def plot_throughput_fit(result, obj_dict, savepath=plot_flux_cal_dir, obs_date=N
     fig, ax = plt.subplots(figsize=(9, 4))
     ax.plot(r['wave'], r['ratio'][cutw:-cutw2], lw=0.8, color='#6399bb', label='ratio (obs / Rayner)')
     ax.plot(r['wave'], r['throughput'], color='black', ls='dashed', lw=1.5, label='spline throughput')
-
-    # shade downweighted telluric windows
-    if r['tell_windows'] is not None:
-        for j, (lo, hi) in enumerate(r['tell_windows']):
-            ax.axvspan(lo, hi, color='grey', alpha=0.25,
-                    label='downweighted (telluric)' if j == 0 else None)
 
     ax.set_title(f"Rayner: {r['std_name'].replace('HD-', 'HD ')}  GA={r['GA']:.1f}", fontsize=13)
     ax.set_xlabel(r'Wavelength [$\AA$]', fontsize=13)
@@ -291,16 +278,12 @@ def resolution_from_header(specres_header, wave):
     return R
 
 
-def plot_throughput(throughput_wave, throughput_values, tell_windows=None, wave_range=None, title='', show=True):
+def plot_throughput(throughput_wave, throughput_values, wave_range=None, title='', show=True):
     '''
     Plot the system throughput curve, optionally restricted to a data range.
     '''
     fig, ax = plt.subplots(figsize=(9, 3.5))
     ax.plot(throughput_wave, throughput_values, color='black', lw=1.2)
-    if tell_windows is not None:
-        for j, (lo, hi) in enumerate(tell_windows):
-            ax.axvspan(lo, hi, color='grey', alpha=0.25,
-                       label='telluric (downweighted)' if j == 0 else None)
     ax.set_xlabel(r'Wavelength [$\AA$]', fontsize=13)
     ax.set_ylabel('throughput', fontsize=13)
     ax.set_title(title, fontsize=13, pad=15)
