@@ -53,13 +53,13 @@ def load_model_transmission(wave_min, wave_max, telgridfile=TELLPCA_FILE):
 
 STAR_PROPERTIES_CACHE = data_dir / 'simbad_star_properties.json'
 
-def _load_star_properties_cache():
+def load_star_properties_cache():
     if STAR_PROPERTIES_CACHE.exists():
         with open(STAR_PROPERTIES_CACHE) as f:
             return json.load(f)
     return {}
 
-def _save_star_properties_cache(cache):
+def save_star_properties_cache(cache):
     with open(STAR_PROPERTIES_CACHE, 'w') as f:
         json.dump(cache, f, indent=2)
 
@@ -72,7 +72,7 @@ def query_star_properties(star_name):
     star_name (str): e.g. 'HIP 105164'
     Returns dict with 'sp_type', 'v_mag', 'ra', 'dec'
     '''
-    cache = _load_star_properties_cache()
+    cache = load_star_properties_cache()
     if star_name in cache:
         return cache[star_name]
 
@@ -94,7 +94,7 @@ def query_star_properties(star_name):
                             'colnames': list(t.colnames)}
 
     cache[star_name] = star_properties_dict
-    _save_star_properties_cache(cache)
+    save_star_properties_cache(cache)
 
     return star_properties_dict
 
