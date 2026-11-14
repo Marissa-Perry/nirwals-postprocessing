@@ -7,7 +7,7 @@ from pathlib import Path
 import glob
 import os
 
-from .fiber_coadd import select_bright_fibers
+from .fiber_coadd import select_fibers_by_completeness
 from .dither_combine import clip_edges_mask
 
 # -------- filepath params ----------
@@ -62,7 +62,7 @@ def read_spec_phot_standard(obj_name, std_star_directory=rayner_dir):
 
 
 def compute_throughput(spec_phot_obs, spec_phot_name,
-                       perf=0.01, cut=5000.0, smooth=15, lam=800000,
+                       completeness=0.90, cut=5000.0, smooth=15, lam=800000,
                        cutw=81, cutw2=None, fibfil=0.62):
     '''
     Compute system throughput = observed_star / spec-phot standard,
@@ -81,8 +81,8 @@ def compute_throughput(spec_phot_obs, spec_phot_name,
     # mask extreme pixels
     data[(data > cut) | (data < -cut)] = np.nan
 
-    # select + sum bright (star) fibers
-    ws = select_bright_fibers(data, frac=perf)
+    # select + sum fibers up to a target flux completeness
+    ws = select_fibers_by_completeness(data, completeness=completeness)
     sumf = np.nansum(data[ws, :], axis=0)
 
     # --- reference standard -> J/pixel on obs grid ---
@@ -123,7 +123,9 @@ def compute_throughput(spec_phot_obs, spec_phot_name,
         'cutw2': cutw2,
         'rflux3': rflux3,
         'soflux': soflux,
-        'oflux': oflux
+        'oflux': oflux,
+        'fibers': ws,
+        'completeness': completeness
     }
 
     return throughput_dict

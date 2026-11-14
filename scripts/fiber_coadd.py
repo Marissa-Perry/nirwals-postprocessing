@@ -1,14 +1,103 @@
+import os
 import numpy as np
+import matplotlib.pyplot as plt
 from photutils.aperture import CircularAperture, aperture_photometry
 from photutils.centroids import centroid_1dg
 
+from .dither_combine import load_astrometry
 
-def select_bright_fibers(flux_all, frac=0.2):
+
+def select_fibers_by_completeness(flux_all, completeness=0.98):
     '''
-    Fibers whose mean flux exceeds frac * brightest fiber's mean flux.
+    Fibers added brightest-first until completeness * total flux is captured.
     '''
     mean_flux = np.nanmean(flux_all, axis=1)
-    return np.where(mean_flux > frac * np.nanmax(mean_flux))[0]
+    order = np.argsort(mean_flux)[::-1]
+    cumf = np.cumsum(mean_flux[order])
+    n = np.searchsorted(cumf, completeness * cumf[-1]) + 1
+    return order[:n]
+
+
+def select_fibers_by_peak_snr(flux_all, sigma_all):
+    '''
+    Fibers added brightest-first up to the fiber count that maximizes cumulative SNR.
+    '''
+    order = np.argsort(np.nanmean(flux_all, axis=1))[::-1]
+    f = np.nansum(flux_all[order], axis=1)
+    s = np.sqrt(np.nansum(sigma_all[order] ** 2, axis=1))
+    cumf = np.cumsum(f)
+    cum_s = np.sqrt(np.cumsum(s ** 2))
+    with np.errstate(invalid='ignore', divide='ignore'):
+        cum_snr = cumf / cum_s
+    n = np.nanargmax(cum_snr) + 1
+    return order[:n]
+
+
+def plot_cumulative_flux_coadd(flux_all, sigma_all, obj_dict, savepath, filename, n_fib_coadd=None, obs_date=None, show=True):
+    '''
+    Top: cumulative flux, normalized to the total.
+    Bottom: cumulative SNR.
+    '''
+    order = np.argsort(np.nanmean(flux_all, axis=1))[::-1]
+    n_fibers = np.arange(1, len(order) + 1)
+
+    f = np.nansum(flux_all[order], axis=1)
+    s = np.sqrt(np.nansum(sigma_all[order] ** 2, axis=1))
+    cumf = np.cumsum(f)
+    cum_s = np.sqrt(np.cumsum(s ** 2))
+    with np.errstate(invalid='ignore', divide='ignore'):
+        cum_snr = cumf / cum_s
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 5), sharex=True, gridspec_kw={'hspace': 0})
+
+    ax1.plot(n_fibers, cumf / cumf[-1], color='black', lw=1.5)
+    ax2.plot(n_fibers, cum_snr, color='black', lw=1.5)
+
+    ax1.axhline(1.0, color='grey', alpha=0.3, lw=1, ls='dashed', zorder=0)
+    if n_fib_coadd is not None:
+        ax1.axvline(n_fib_coadd, color='black', lw=1.2, ls='dotted', zorder=1, label=f'co-add ({n_fib_coadd} fibers)')
+        ax2.axvline(n_fib_coadd, color='black', lw=1.2, ls='dotted', zorder=1)
+    ax1.set_ylabel('fraction of total flux', fontsize=13, labelpad=15)
+    ax1.set_title(f"{obj_dict['object']}", fontsize=15, pad=14)
+    ax1.legend(fontsize=12, loc='lower right')
+
+    ax2.set_ylabel('cumulative SNR', fontsize=13, labelpad=15)
+    ax2.set_xlabel('# fibers (brightest to faintest)', fontsize=13, labelpad=15)
+
+    plt.tight_layout()
+    if savepath:
+        save_dir = os.path.join(savepath, obs_date, obj_dict['exposure_id']) if obs_date else os.path.join(savepath, obj_dict['exposure_id'])
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, filename), dpi=500, bbox_inches='tight')
+    plt.show() if show else plt.close()
+
+
+def plot_fiber_selection(flux_all, fibers, obj_dict, label, savepath, filename, obs_date=None, show=True):
+    '''
+    IFU fiber map: each fiber at its on-sky (X, Y) coloured by mean flux, with
+    fibers used for a bright-fiber sum/coadd circled in red.
+    '''
+    astrometry = load_astrometry()
+    x, y = astrometry['X_arcsec'].values, astrometry['Y_arcsec'].values
+    mean_flux = np.nanmean(flux_all, axis=1)
+    vmin, vmax = np.nanpercentile(mean_flux[np.isfinite(mean_flux)], [2, 98])
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    sc = ax.scatter(x, y, c=mean_flux, s=100, vmin=vmin, vmax=vmax, cmap='viridis', edgecolors='black', linewidths=0.4)
+    ax.scatter(x[fibers], y[fibers], s=180, facecolors='none', edgecolors='red', linewidths=1.2)
+
+    ax.set_title(f"{obj_dict['object']} -- {len(fibers)} fibers ({label})", fontsize=13, pad=15)
+    ax.set_xlabel('X [arcsec]', fontsize=13, labelpad=10)
+    ax.set_ylabel('Y [arcsec]', fontsize=13, labelpad=10)
+    ax.set_aspect('equal')
+    cb = fig.colorbar(sc, ax=ax, location='right', pad=0.02)
+    cb.set_label('mean flux', fontsize=12, labelpad=12)
+
+    if savepath:
+        save_dir = os.path.join(savepath, obs_date, obj_dict['exposure_id']) if obs_date else os.path.join(savepath, obj_dict['exposure_id'])
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, filename), dpi=500, bbox_inches='tight')
+    plt.show() if show else plt.close()
 
 
 def select_snr_fibers(flux_all, sigma_all, wave_mask, snr_thresh=3):

@@ -6,11 +6,11 @@ import sys
 from datetime import datetime
 
 from ..scripts.get_NIRWALS_DRP_products import (get_reduced_exposures, get_reduced_spectra, plot_science_reduction_results, plot_ext_spectra_dir)
-from ..scripts.telluric_correction import (query_star_properties, rayner_std_spec, fit_telluric_star_model, fit_telluric_poly_model, apply_telluric_model, plot_star_telluric_model_fit, plot_poly_telluric_model_fit, plot_telluric_correction)
-from ..scripts.flux_calibration import (compute_throughput, save_throughput, flux_calibrate_exposure, plot_throughput_fit, plot_throughput_validation, plot_flux_calibration, processed_data_dir)
+from ..scripts.telluric_correction import (query_star_properties, rayner_std_spec, fit_telluric_star_model, fit_telluric_poly_model, apply_telluric_model, plot_star_telluric_model_fit, plot_poly_telluric_model_fit, plot_telluric_correction, plot_tell_corr_dir)
+from ..scripts.flux_calibration import (compute_throughput, save_throughput, flux_calibrate_exposure, plot_throughput_fit, plot_throughput_validation, plot_flux_calibration, processed_data_dir, plot_flux_cal_dir)
 from ..scripts.dither_combine import (combine_dithers, plot_fiber_map, plot_cube_image, plot_coadded_spectrum, clip_edges_mask)
 from ..scripts.data_products import write_postprocessed_fits, write_1d_fits
-from ..scripts.fiber_coadd import (select_bright_fibers, coadd_fibers, half_light_radius_rough_estimate, coadd_fibers_averaged, select_snr_fibers)
+from ..scripts.fiber_coadd import (select_fibers_by_peak_snr, coadd_fibers, half_light_radius_rough_estimate, coadd_fibers_averaged, select_snr_fibers, plot_fiber_selection, plot_cumulative_flux_coadd)
 from ..scripts.bitmask import (MASK_BADPIX, MASK_SKYLINE, MASK_LOWTELL, MASK_DONOTUSE, DONOTUSE_BITS, TELL_MIN, SKY_NSIG)
 
 # ----------------------------------------------------------------------
@@ -133,13 +133,13 @@ def pick_matching_grating_angle(candidates, target_GA):
     return [e for e in candidates if round(e['grating_angle'], 1) == round(target_GA, 1)]
 
 
-def coadd_bright_fibers_with_ivar(flux_all, sigma_all, frac=0.2):
+def coadd_bright_fibers_with_ivar(flux_all, sigma_all):
     """
-    Co-adding based on flux threshold.
+    Co-add fibers brightest-first, up to the fiber count that maximizes cumulative SNR.
 
     NOTE: this is the fiber-selection step used only to build the 1D input to the telluric-fitting routines
     """
-    fibers = select_bright_fibers(flux_all, frac=frac)
+    fibers = select_fibers_by_peak_snr(flux_all, sigma_all)
     flux, sigma = coadd_fibers(flux_all, sigma_all, fibers)
 
     gpm = np.isfinite(flux) & np.isfinite(sigma) & (sigma > 0)
@@ -147,7 +147,7 @@ def coadd_bright_fibers_with_ivar(flux_all, sigma_all, frac=0.2):
     ivar[gpm] = 1.0 / sigma[gpm] ** 2
     gpm &= np.isfinite(ivar) & (ivar < 1e40)  # drop inf ivar
 
-    return flux, sigma, ivar, gpm
+    return flux, sigma, ivar, gpm, fibers
 
 
 # ----------------------------------------------------------------------
@@ -160,7 +160,7 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
     """
     star_props = None if std_spec is not None else query_star_properties(standard_name)
     wave, flux_all, sigma_all = get_reduced_spectra(standard_exp, standard_exposures)
-    flux, sigma, ivar, gpm = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
+    flux, sigma, ivar, gpm, fibers = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
     gpm = gpm & clip_edges_mask(wave)   # trim detector edges (same clip applied to the final product for target)
     median_specres = np.median(standard_exp['ssc']['spec_res'])   # get the median spectral resolution for center of model bounds
     upper_specres_frac = max(standard_exp['ssc']['spec_res']) / median_specres  # fractional bound edges for model
@@ -174,6 +174,11 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
 
     if plot:
         plot_star_telluric_model_fit(wave, flux, fit, standard_exp, star_sigma=sigma, obs_date=obs_date, show=False)
+        plot_fiber_selection(flux_all, fibers, standard_exp, label='peak SNR', savepath=plot_tell_corr_dir,
+                             filename='telluric_fiber_selection.png', obs_date=obs_date, show=False)
+        plot_cumulative_flux_coadd(flux_all, sigma_all, standard_exp, savepath=plot_tell_corr_dir,
+                                   filename='telluric_cumulative_flux_coadd.png', n_fib_coadd=len(fibers),
+                                   obs_date=obs_date, show=False)
 
     return fit
 
@@ -183,7 +188,7 @@ def fit_telluric_poly(target_exp, target_exposures, polyorder=3, disp=False, plo
     Poly-model telluric fit, fit directly to a co-added spectrum (target or spec-phot standard).
     """
     wave, flux_all, sigma_all = get_reduced_spectra(target_exp, target_exposures)
-    flux, sigma, ivar, gpm = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
+    flux, sigma, ivar, gpm, fibers = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
     gpm = gpm & clip_edges_mask(wave)   # trim detector edges (same clip applied to the final product for target)
     median_specres = np.median(target_exp['ssc']['spec_res'])   # get the median spectral resolution for center of model bounds
     upper_specres_frac = max(target_exp['ssc']['spec_res']) / median_specres  # fractional bound edges for model
@@ -197,6 +202,11 @@ def fit_telluric_poly(target_exp, target_exposures, polyorder=3, disp=False, plo
                                   polyorder=polyorder, disp=disp)
     if plot:
         plot_poly_telluric_model_fit(wave, flux, fit, target_exp, star_sigma=sigma, obs_date=obs_date, show=False)
+        plot_fiber_selection(flux_all, fibers, target_exp, label='peak SNR', savepath=plot_tell_corr_dir,
+                             filename='telluric_fiber_selection.png', obs_date=obs_date, show=False)
+        plot_cumulative_flux_coadd(flux_all, sigma_all, target_exp, savepath=plot_tell_corr_dir,
+                                   filename='telluric_cumulative_flux_coadd.png', n_fib_coadd=len(fibers),
+                                   obs_date=obs_date, show=False)
     return fit
 
 
@@ -310,6 +320,12 @@ def get_throughput_file(sci_exposures, args, plot=True):
     if plot:
         plot_throughput_fit(throughput_result, specphot_exp, obs_date=args.obs_date, show=False)
         plot_throughput_validation(throughput_result, specphot_exp, obs_date=args.obs_date, show=False)
+        plot_fiber_selection(specphot_exp['flux'], throughput_result['fibers'], specphot_exp,
+                             label=f"{throughput_result['completeness']:.0%} completeness", savepath=plot_flux_cal_dir,
+                             filename='throughput_fiber_selection.png', obs_date=args.obs_date, show=False)
+        plot_cumulative_flux_coadd(specphot_exp['flux'], res['sigma'], specphot_exp, savepath=plot_flux_cal_dir,
+                                   filename='throughput_cumulative_flux_coadd.png', n_fib_coadd=len(throughput_result['fibers']),
+                                   obs_date=args.obs_date, show=False)
 
     return save_throughput(throughput_result)
 
@@ -327,20 +343,19 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
  
     tcorr_1d = tcorr_sigma_1d = None
     if plot:
-        raw_1d, raw_sigma_1d, _, _ = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
-        tcorr_1d, tcorr_sigma_1d, _, _ = coadd_bright_fibers_with_ivar(tcorr['flux'], tcorr['sigma'])
+        raw_1d, raw_sigma_1d, _, _, _ = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
+        tcorr_1d, tcorr_sigma_1d, _, _, _ = coadd_bright_fibers_with_ivar(tcorr['flux'], tcorr['sigma'])
         plot_telluric_correction(wave, raw_1d, tcorr_1d, sci_exp, raw_sigma=raw_sigma_1d, corr_sigma=tcorr_sigma_1d, obs_date=obs_date, show=False)
  
     if throughput_file is not None:
         flux, sigma = flux_calibrate_exposure(wave, tcorr['flux'], tcorr['sigma'], sci_exp, throughput_file)
         if plot:
-            fluxcal_1d, fluxcal_sigma_1d, _, _ = coadd_bright_fibers_with_ivar(flux, sigma)
-            # number of good (unmasked) bright fibers per wavelength, from the reduced MASK
-            bright = select_bright_fibers(flux, frac=0.2)
+            fluxcal_1d, fluxcal_sigma_1d, _, _, _ = coadd_bright_fibers_with_ivar(flux, sigma)
+            snr_fibers = select_snr_fibers(flux, sigma, clip_edges_mask(wave))
             m = sci_exp['ssc'].get('mask')
             if m is not None:
                 m = np.asarray(m)
-                good_fibers_1d = np.nansum(m[bright] == 0, axis=0)
+                good_fibers_1d = np.nansum(m[snr_fibers] == 0, axis=0)
             else:
                 good_fibers_1d = np.zeros_like(wave)
             plot_flux_calibration(wave, tcorr_1d, tcorr_sigma_1d, fluxcal_1d, fluxcal_sigma_1d,
