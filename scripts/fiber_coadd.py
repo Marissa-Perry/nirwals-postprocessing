@@ -20,9 +20,9 @@ def select_fibers_by_completeness(flux_all, completeness=0.98):
     return order[:n]
 
 
-def select_fibers_by_peak_snr(flux_all, sigma_all):
+def select_fibers_by_peak_snr(flux_all, sigma_all, tol=0.99, max_fibers=20):
     '''
-    Fibers added brightest-first up to the fiber count that maximizes cumulative SNR.
+    Fibers added brightest-first up to the knee of the cumulative SNR curve
     '''
     order = np.argsort(np.nanmean(flux_all, axis=1))[::-1]
     f = np.nansum(flux_all[order], axis=1)
@@ -33,7 +33,9 @@ def select_fibers_by_peak_snr(flux_all, sigma_all):
     cum_s = np.sqrt(np.cumsum(s ** 2))
     with np.errstate(invalid='ignore', divide='ignore'):
         cum_snr = cumf / cum_s
-    n = np.nanargmax(cum_snr) + 1
+    peak_snr = np.nanmax(cum_snr)
+    knee = np.argmax(cum_snr >= tol * peak_snr) + 1
+    n = min(knee, max_fibers)
     return order[:n]
 
 
