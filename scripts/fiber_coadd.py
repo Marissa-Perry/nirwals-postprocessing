@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from astropy.stats import sigma_clip
 from photutils.aperture import CircularAperture, aperture_photometry
 from photutils.centroids import centroid_1dg
 
@@ -25,7 +26,9 @@ def select_fibers_by_peak_snr(flux_all, sigma_all):
     '''
     order = np.argsort(np.nanmean(flux_all, axis=1))[::-1]
     f = np.nansum(flux_all[order], axis=1)
-    s = np.sqrt(np.nansum(sigma_all[order] ** 2, axis=1))
+    # reject per-pixel sigma outliers (e.g. unmasked bad pixels) before summing in quadrature
+    sigma_rej = sigma_clip(sigma_all[order], sigma=5, maxiters=5, axis=1).filled(np.nan)
+    s = np.sqrt(np.nansum(sigma_rej ** 2, axis=1))
     cumf = np.cumsum(f)
     cum_s = np.sqrt(np.cumsum(s ** 2))
     with np.errstate(invalid='ignore', divide='ignore'):
@@ -43,7 +46,9 @@ def plot_cumulative_flux_coadd(flux_all, sigma_all, obj_dict, savepath, filename
     n_fibers = np.arange(1, len(order) + 1)
 
     f = np.nansum(flux_all[order], axis=1)
-    s = np.sqrt(np.nansum(sigma_all[order] ** 2, axis=1))
+    # reject per-pixel sigma outliers (e.g. unmasked bad pixels) before summing in quadrature
+    sigma_rej = sigma_clip(sigma_all[order], sigma=5, maxiters=5, axis=1).filled(np.nan)
+    s = np.sqrt(np.nansum(sigma_rej ** 2, axis=1))
     cumf = np.cumsum(f)
     cum_s = np.sqrt(np.cumsum(s ** 2))
     with np.errstate(invalid='ignore', divide='ignore'):
