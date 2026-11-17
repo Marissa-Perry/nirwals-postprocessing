@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from photutils.aperture import CircularAperture, aperture_photometry
 from photutils.centroids import centroid_1dg
@@ -72,13 +73,17 @@ def plot_cumulative_flux_coadd(flux_all, sigma_all, obj_dict, savepath, filename
     plt.show() if show else plt.close()
 
 
-def plot_fiber_selection(flux_all, fibers, obj_dict, label, savepath, filename, obs_date=None, show=True):
+def plot_fiber_selection(flux_all, fibers, obj_dict, label, savepath, filename, ifu_id, obs_date=None, show=True):
     '''
     IFU fiber map: each fiber at its on-sky (X, Y) coloured by mean flux, with
     fibers used for a bright-fiber sum/coadd circled in red.
     '''
     astrometry = load_astrometry()
-    x, y = astrometry['X_arcsec'].values, astrometry['Y_arcsec'].values
+    idx = pd.Index(astrometry['IFU_FIBER_ID']).get_indexer(ifu_id)
+    if (idx == -1).any():
+        missing = np.asarray(ifu_id)[idx == -1]
+        raise ValueError(f'IFU_ID(s) {missing.tolist()} not found in the astrometry file.')
+    x, y = astrometry['X_arcsec'].values[idx], astrometry['Y_arcsec'].values[idx]
     mean_flux = np.nanmean(flux_all, axis=1)
     vmin, vmax = np.nanpercentile(mean_flux[np.isfinite(mean_flux)], [2, 98])
 

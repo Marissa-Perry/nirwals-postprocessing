@@ -159,7 +159,7 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
     std_spec, if given, is used as the star's true spectrum instead of a SIMBAD/Schmidt-Kaler lookup.
     """
     star_props = None if std_spec is not None else query_star_properties(standard_name)
-    wave, flux_all, sigma_all = get_reduced_spectra(standard_exp, standard_exposures)
+    wave, flux_all, sigma_all, ifu_ids = get_reduced_spectra(standard_exp, standard_exposures)
     flux, sigma, ivar, gpm, fibers = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
     gpm = gpm & clip_edges_mask(wave)   # trim detector edges (same clip applied to the final product for target)
     median_specres = np.median(standard_exp['ssc']['spec_res'])   # get the median spectral resolution for center of model bounds
@@ -175,7 +175,7 @@ def fit_telluric_star(standard_exp, standard_name, standard_exposures, polyorder
     if plot:
         plot_star_telluric_model_fit(wave, flux, fit, standard_exp, star_sigma=sigma, obs_date=obs_date, show=False)
         plot_fiber_selection(flux_all, fibers, standard_exp, label='peak SNR', savepath=plot_tell_corr_dir,
-                             filename='telluric_fiber_selection.png', obs_date=obs_date, show=False)
+                             filename='telluric_fiber_selection.png', ifu_id=ifu_ids, obs_date=obs_date, show=False)
         plot_cumulative_flux_coadd(flux_all, sigma_all, standard_exp, savepath=plot_tell_corr_dir,
                                    filename='telluric_cumulative_flux_coadd.png', n_fib_coadd=len(fibers),
                                    obs_date=obs_date, show=False)
@@ -187,7 +187,7 @@ def fit_telluric_poly(target_exp, target_exposures, polyorder=3, disp=False, plo
     """
     Poly-model telluric fit, fit directly to a co-added spectrum (target or spec-phot standard).
     """
-    wave, flux_all, sigma_all = get_reduced_spectra(target_exp, target_exposures)
+    wave, flux_all, sigma_all, ifu_ids = get_reduced_spectra(target_exp, target_exposures)
     flux, sigma, ivar, gpm, fibers = coadd_bright_fibers_with_ivar(flux_all, sigma_all)
     gpm = gpm & clip_edges_mask(wave)   # trim detector edges (same clip applied to the final product for target)
     median_specres = np.median(target_exp['ssc']['spec_res'])   # get the median spectral resolution for center of model bounds
@@ -203,7 +203,7 @@ def fit_telluric_poly(target_exp, target_exposures, polyorder=3, disp=False, plo
     if plot:
         plot_poly_telluric_model_fit(wave, flux, fit, target_exp, star_sigma=sigma, obs_date=obs_date, show=False)
         plot_fiber_selection(flux_all, fibers, target_exp, label='peak SNR', savepath=plot_tell_corr_dir,
-                             filename='telluric_fiber_selection.png', obs_date=obs_date, show=False)
+                             filename='telluric_fiber_selection.png', ifu_id=ifu_ids, obs_date=obs_date, show=False)
         plot_cumulative_flux_coadd(flux_all, sigma_all, target_exp, savepath=plot_tell_corr_dir,
                                    filename='telluric_cumulative_flux_coadd.png', n_fib_coadd=len(fibers),
                                    obs_date=obs_date, show=False)
@@ -310,7 +310,7 @@ def get_throughput_file(sci_exposures, args, plot=True):
 
     flux_dtype = specphot_exp['flux'].dtype
     # object-fiber-only flux/sigma, on a common wavelength grid
-    wave, flux_all, sigma_all = get_reduced_spectra(specphot_exp, specphot_exposures)
+    wave, flux_all, sigma_all, ifu_ids = get_reduced_spectra(specphot_exp, specphot_exposures)
     res = apply_telluric_model(flux_all, sigma_all, wave, specphot_fit['transmission'], specphot_fit['wave'])
     specphot_exp['flux'] = res['flux'].astype(flux_dtype)
     specphot_exp['wave'] = wave
@@ -322,7 +322,7 @@ def get_throughput_file(sci_exposures, args, plot=True):
         plot_throughput_validation(throughput_result, specphot_exp, obs_date=args.obs_date, show=False)
         plot_fiber_selection(specphot_exp['flux'], throughput_result['fibers'], specphot_exp,
                              label=f"{throughput_result['completeness']:.0%} completeness", savepath=plot_flux_cal_dir,
-                             filename='throughput_fiber_selection.png', obs_date=args.obs_date, show=False)
+                             filename='throughput_fiber_selection.png', ifu_id=ifu_ids, obs_date=args.obs_date, show=False)
         plot_cumulative_flux_coadd(specphot_exp['flux'], res['sigma'], specphot_exp, savepath=plot_flux_cal_dir,
                                    filename='throughput_cumulative_flux_coadd.png', n_fib_coadd=len(throughput_result['fibers']),
                                    obs_date=args.obs_date, show=False)
@@ -337,8 +337,8 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
     """
     Apply telluric correction (and flux calibration, if throughput_file is given) to one science exposure's full per-fiber 2D spectrum.
     """
-    wave, flux_all, sigma_all = get_reduced_spectra(sci_exp, exposures)
- 
+    wave, flux_all, sigma_all, ifu_ids = get_reduced_spectra(sci_exp, exposures)
+
     tcorr = apply_telluric_model(flux_all, sigma_all, wave, telluric_fit['transmission'], telluric_fit['wave'])
  
     tcorr_1d = tcorr_sigma_1d = None
@@ -391,7 +391,7 @@ def process_single_exposure(sci_exp, exposures, telluric_fit, throughput_file=No
                'airmass': ssc.get('airmass'), 'gain': ssc.get('gain'), 'grating_angle': ssc.get('grating_angle')}
 
     return {'wave': wave, 'flux': flux, 'sigma': sigma,
-            'exp': sci_exp,
+            'exp': sci_exp, 'ifu_id': ifu_ids,
             'mask': bitmask, 'skycorr': skycorr, 'tellcorr': tellcorr,
             'specres': specres, 'obsinfo': obsinfo}
 

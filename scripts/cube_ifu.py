@@ -364,7 +364,7 @@ def ifu_to_grid(fiber_data,core_x_pixels,core_y_pixels,core_diameter_pixels,
         
         # spatial flux conservation term
         alpha = 1./(np.pi*(core_radius_pixels)**2)
-        
+
         # slow but non-memory intensive
         if not use_broadcasting:
             # perform reconstruction channel-by-channel
@@ -397,7 +397,7 @@ def ifu_to_grid(fiber_data,core_x_pixels,core_y_pixels,core_diameter_pixels,
         else:
             weight_map = weight_map.reshape(N_fibers,1,size_y,size_x)
             weight_map = weight_map*np.ones((1,Nels,1,1))
-            weight_map[np.isnan(fiber_data),:,:] = np.nan      
+            weight_map[np.isnan(fiber_data),:,:] = np.nan
             normalization = np.nansum(weight_map,axis=0)
             normalization[normalization==0]=np.nan
             weight_map/=normalization

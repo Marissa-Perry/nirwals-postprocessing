@@ -106,16 +106,18 @@ def combine_dithers(per_exposure_results, astrometry_file=ASTROMETRY_FILE, offse
             x_off, y_off, flux_scale = 0.0, 0.0, 1.0
 
         n_fibers = result['flux'].shape[0]
-        if len(astrometry) != n_fibers:
+        idx = pd.Index(astrometry['IFU_FIBER_ID']).get_indexer(result['ifu_id'])
+        if (idx == -1).any():
+            missing = np.asarray(result['ifu_id'])[idx == -1]
             raise ValueError(
-                f'Astrometry file has {len(astrometry)} fiber rows but this exposure has {n_fibers} '
-                'object fibers -- check the astrometry-file/fiber-ordering assumption.'
+                f"IFU_ID(s) {missing.tolist()} from {result['exp']['exposure_id']} not found in "
+                f"{os.path.basename(str(astrometry_file))}."
             )
 
         all_flux.append(result['flux'] * flux_scale)
         all_sigma.append(result['sigma'] * flux_scale)
-        all_x.append(astrometry['X_arcsec'].values + x_off)
-        all_y.append(astrometry['Y_arcsec'].values + y_off)
+        all_x.append(astrometry['X_arcsec'].values[idx] + x_off)
+        all_y.append(astrometry['Y_arcsec'].values[idx] + y_off)
         all_expidx.append(np.full(n_fibers, e, dtype=np.int16))   # which exposure each fiber row is from
         exposure_ids.append(result['exp']['exposure_id'])
         all_mask.append(result['mask'])                           # gpcnt bad-pixel mask (never flux-scaled)
