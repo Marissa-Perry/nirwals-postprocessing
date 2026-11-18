@@ -53,25 +53,15 @@ def load_astrometry(astrometry_file=ASTROMETRY_FILE):
 
 def load_dither_offsets(offsets_file=DITHER_OFFSETS_FILE):
     """
-    Dither offsets + relative flux scale, keyed by exposure ID
-    ('{YYYYMMDD}_{n}'). Returns an empty table if the file doesn't exist
+    Dither offsets + relative flux scale, keyed by position in the dither
+    sequence (0-indexed). Returns an empty table if the file doesn't exist
     (e.g. no dithering has been configured yet) -- every exposure then
     falls back to zero offset / unit flux scale.
     """
     offsets_file = Path(offsets_file)
     if not offsets_file.exists():
         return pd.DataFrame(columns=['X_offset', 'Y_offset', 'flux_scale'])
-    return pd.read_csv(offsets_file).set_index('ID')
-
-
-def exposure_offset_id(result):
-    """
-    '{YYYYMMDD}_{n}' from a process_single_exposure() result, matching User_offset.csv's ID convention.
-    """
-    exp_id = result['exp']['exposure_id']   # e.g. 'dphN202407010002.2.1'
-    obs_date = exp_id[4:12]                 # 'YYYYMMDD' following the 'dphN' prefix
-    n = exp_id.split('.')[1]                # '2'
-    return f'{obs_date}_{n}'
+    return pd.read_csv(offsets_file).set_index('dither_index')
 
 
 def combine_dithers(per_exposure_results, astrometry_file=ASTROMETRY_FILE, offsets_file=DITHER_OFFSETS_FILE,
@@ -98,11 +88,10 @@ def combine_dithers(per_exposure_results, astrometry_file=ASTROMETRY_FILE, offse
     all_flux, all_sigma, all_x, all_y, all_expidx = [], [], [], [], []
     all_mask, all_skycorr, exposure_ids, obsinfo = [], [], [], []
     for e, result in enumerate(per_exposure_results):
-        oid = exposure_offset_id(result)
-        if oid in offsets.index:
-            x_off, y_off, flux_scale = offsets.loc[oid, ['X_offset', 'Y_offset', 'flux_scale']]
+        if e in offsets.index:
+            x_off, y_off, flux_scale = offsets.loc[e, ['X_offset', 'Y_offset', 'flux_scale']]
         else:
-            print(f'  {oid}: not found in {os.path.basename(str(offsets_file))} -- using zero offset, unit flux scale')
+            print(f'  dither position {e}: not found in {os.path.basename(str(offsets_file))} -- using zero offset, unit flux scale')
             x_off, y_off, flux_scale = 0.0, 0.0, 1.0
 
         n_fibers = result['flux'].shape[0]
